@@ -26,7 +26,8 @@ class GridNavi(gym.Env):
         self._max_episode_steps = num_steps
         self.step_count = 0
 
-        self.observation_space = spaces.Box(low=0, high=self.num_cells - 1, shape=(2,))
+        self.observation_space = spaces.Box(
+            low=0, high=self.num_cells - 1, shape=(2,))
         self.action_space = spaces.Discrete(5)  # noop, up, right, down, left
         self.task_dim = 2
         self.belief_dim = 25
@@ -35,7 +36,8 @@ class GridNavi(gym.Env):
         self.starting_state = (0.0, 0.0)
 
         # goals can be anywhere except on possible starting states and immediately around it
-        self.possible_goals = list(itertools.product(range(num_cells), repeat=2))
+        self.possible_goals = list(
+            itertools.product(range(num_cells), repeat=2))
         self.possible_goals.remove((0, 0))
         self.possible_goals.remove((0, 1))
         self.possible_goals.remove((1, 1))
@@ -74,7 +76,8 @@ class GridNavi(gym.Env):
         if action == 5 or on_goal:
             possible_goals = self.possible_goals.copy()
             possible_goals.remove(tuple(self._goal))
-            wrong_hint = possible_goals[random.choice(range(len(possible_goals)))]
+            wrong_hint = possible_goals[random.choice(
+                range(len(possible_goals)))]
             self._belief_state *= 0
             self._belief_state[self.task_to_id(self._goal)] = 0.5
             self._belief_state[self.task_to_id(wrong_hint)] = 0.5
@@ -104,9 +107,11 @@ class GridNavi(gym.Env):
         """
 
         if action == 1:  # up
-            self._env_state[1] = min([self._env_state[1] + 1, self.num_cells - 1])
+            self._env_state[1] = min(
+                [self._env_state[1] + 1, self.num_cells - 1])
         elif action == 2:  # right
-            self._env_state[0] = min([self._env_state[0] + 1, self.num_cells - 1])
+            self._env_state[0] = min(
+                [self._env_state[0] + 1, self.num_cells - 1])
         elif action == 3:  # down
             self._env_state[1] = max([self._env_state[1] - 1, 0])
         elif action == 4:  # left
@@ -147,7 +152,8 @@ class GridNavi(gym.Env):
         return state, reward, done, info
 
     def task_to_id(self, goals):
-        mat = torch.arange(0, self.num_cells ** 2).long().reshape((self.num_cells, self.num_cells))
+        mat = torch.arange(0, self.num_cells **
+                           2).long().reshape((self.num_cells, self.num_cells))
         if isinstance(goals, list) or isinstance(goals, tuple):
             goals = np.array(goals)
         if isinstance(goals, np.ndarray):
@@ -167,7 +173,8 @@ class GridNavi(gym.Env):
         return classes
 
     def id_to_task(self, classes):
-        mat = torch.arange(0, self.num_cells ** 2).long().reshape((self.num_cells, self.num_cells)).numpy()
+        mat = torch.arange(
+            0, self.num_cells ** 2).long().reshape((self.num_cells, self.num_cells)).numpy()
         goals = np.zeros((len(classes), 2))
         classes = classes.numpy()
         for i in range(len(classes)):
@@ -257,14 +264,18 @@ class GridNavi(gym.Env):
 
                 if episode_idx == 0:
                     # reset to prior
-                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(1)
+                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(
+                        1)
                     curr_latent_sample = curr_latent_sample[0].to(device)
                     curr_latent_mean = curr_latent_mean[0].to(device)
                     curr_latent_logvar = curr_latent_logvar[0].to(device)
 
-                episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                episode_latent_samples[episode_idx].append(
+                    curr_latent_sample[0].clone())
+                episode_latent_means[episode_idx].append(
+                    curr_latent_mean[0].clone())
+                episode_latent_logvars[episode_idx].append(
+                    curr_latent_logvar[0].clone())
 
             episode_all_obs[episode_idx].append(start_obs.clone())
             if args.pass_belief_to_policy and (encoder is None):
@@ -279,18 +290,22 @@ class GridNavi(gym.Env):
 
                 # act
                 _, action = utl.select_action(args=args,
-                                                 policy=policy,
-                                                 state=state.view(-1),
-                                                 belief=belief,
-                                                 task=task,
-                                                 deterministic=True,
-                                                 latent_sample=curr_latent_sample.view(-1) if (curr_latent_sample is not None) else None,
-                                                 latent_mean=curr_latent_mean.view(-1) if (curr_latent_mean is not None) else None,
-                                                 latent_logvar=curr_latent_logvar.view(-1) if (curr_latent_logvar is not None) else None,
-                                                 )
+                                              policy=policy,
+                                              state=state.view(-1),
+                                              belief=belief,
+                                              task=task,
+                                              deterministic=True,
+                                              latent_sample=curr_latent_sample.view(-1) if (
+                                                  curr_latent_sample is not None) else None,
+                                              latent_mean=curr_latent_mean.view(-1) if (
+                                                  curr_latent_mean is not None) else None,
+                                              latent_logvar=curr_latent_logvar.view(-1) if (
+                                                  curr_latent_logvar is not None) else None,
+                                              )
 
                 # observe reward and next obs
-                [state, belief, task], (rew_raw, rew_normalised), done, infos = utl.env_step(env, action, args)
+                [state, belief, task], (rew_raw, rew_normalised), done, infos = utl.env_step(
+                    env, action, args)
 
                 if encoder is not None:
                     # update task embedding
@@ -301,9 +316,12 @@ class GridNavi(gym.Env):
                         hidden_state,
                         return_prior=False)
 
-                    episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                    episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                    episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                    episode_latent_samples[episode_idx].append(
+                        curr_latent_sample[0].clone())
+                    episode_latent_means[episode_idx].append(
+                        curr_latent_mean[0].clone())
+                    episode_latent_logvars[episode_idx].append(
+                        curr_latent_logvar[0].clone())
 
                 episode_all_obs[episode_idx].append(state.clone())
                 episode_next_obs[episode_idx].append(state.clone())
@@ -318,7 +336,8 @@ class GridNavi(gym.Env):
 
                 if infos[0]['done_mdp'] and not done:
                     start_obs = infos[0]['start_state']
-                    start_obs = torch.from_numpy(start_obs).float().reshape((1, -1)).to(device)
+                    start_obs = torch.from_numpy(
+                        start_obs).float().reshape((1, -1)).to(device)
                     break
 
             episode_returns.append(sum(curr_rollout_rew))
@@ -328,8 +347,10 @@ class GridNavi(gym.Env):
         # clean up
 
         if encoder is not None:
-            episode_latent_means = [torch.stack(e) for e in episode_latent_means]
-            episode_latent_logvars = [torch.stack(e) for e in episode_latent_logvars]
+            episode_latent_means = [torch.stack(
+                e) for e in episode_latent_means]
+            episode_latent_logvars = [torch.stack(
+                e) for e in episode_latent_logvars]
 
         episode_prev_obs = [torch.cat(e) for e in episode_prev_obs]
         episode_next_obs = [torch.cat(e) for e in episode_next_obs]
@@ -343,11 +364,12 @@ class GridNavi(gym.Env):
                                                 image_folder, iter_idx, episode_beliefs)
 
         if reward_decoder:
-            plot_rew_reconstruction(env, rew_pred_means, rew_pred_vars, image_folder, iter_idx)
+            plot_rew_reconstruction(
+                env, rew_pred_means, rew_pred_vars, image_folder, iter_idx)
 
         return episode_latent_means, episode_latent_logvars, \
-               episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
-               episode_returns
+            episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
+            episode_returns
 
 
 def plot_rew_reconstruction(env,
@@ -396,7 +418,7 @@ def plot_rew_reconstruction(env,
     plt.tight_layout()
     if image_folder is not None:
         plt.savefig('{}/{}_rew_decoder'.format(image_folder, iter_idx))
-        plt.close()
+        plt.close('all')
     else:
         plt.show()
 
@@ -407,7 +429,8 @@ def plot_bb(env, args, episode_all_obs, episode_goals, reward_decoder,
     Plot behaviour and belief.
     """
 
-    plt.figure(figsize=(1.5 * env._max_episode_steps, 1.5 * args.max_rollouts_per_task))
+    plt.figure(figsize=(1.5 * env._max_episode_steps,
+               1.5 * args.max_rollouts_per_task))
 
     num_episodes = len(episode_all_obs)
     num_steps = len(episode_all_obs[0])
@@ -465,7 +488,7 @@ def plot_bb(env, args, episode_all_obs, episode_goals, reward_decoder,
     plt.tight_layout()
     if image_folder is not None:
         plt.savefig('{}/{}_behaviour'.format(image_folder, iter_idx))
-        plt.close()
+        plt.close('all')
     else:
         plt.show()
 
@@ -508,9 +531,11 @@ def compute_beliefs(env, args, reward_decoder, latent_mean, latent_logvar, goal)
 
     if not args.disable_stochasticity_in_latent:
         # take several samples fromt he latent distribution
-        samples = utl.sample_gaussian(latent_mean.view(-1), latent_logvar.view(-1), 100)
+        samples = utl.sample_gaussian(
+            latent_mean.view(-1), latent_logvar.view(-1), 100)
     else:
-        samples = torch.cat((latent_mean.view(-1), latent_logvar.view(-1))).unsqueeze(0)
+        samples = torch.cat(
+            (latent_mean.view(-1), latent_logvar.view(-1))).unsqueeze(0)
 
     # compute reward predictions for those
     if reward_decoder.multi_head:
@@ -526,11 +551,13 @@ def compute_beliefs(env, args, reward_decoder, latent_mean, latent_logvar, goal)
         tsv = []
         for st in range(num_cells ** 2):
             task_id = unwrapped_env.id_to_task(torch.tensor([st]))
-            curr_state = unwrapped_env.goal_to_onehot_id(task_id).expand((samples.shape[0], 2))
+            curr_state = unwrapped_env.goal_to_onehot_id(
+                task_id).expand((samples.shape[0], 2))
             if unwrapped_env.oracle:
                 if isinstance(goal, np.ndarray):
                     goal = torch.from_numpy(goal)
-                curr_state = torch.cat((curr_state, goal.repeat(curr_state.shape[0], 1).float()), dim=1)
+                curr_state = torch.cat((curr_state, goal.repeat(
+                    curr_state.shape[0], 1).float()), dim=1)
             rew_pred = reward_decoder(samples, curr_state)
             if args.rew_pred_type == 'bernoulli':
                 rew_pred = torch.sigmoid(rew_pred)

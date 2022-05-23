@@ -33,7 +33,8 @@ class AntEnv(MujocoEnv):
         survive_reward = 0.  # 1.0
         reward = forward_reward - ctrl_cost - contact_cost + survive_reward
         state = self.state_vector()
-        notdone = np.isfinite(state).all() and state[2] >= 0.2 and state[2] <= 1.0
+        notdone = np.isfinite(state).all(
+        ) and state[2] >= 0.2 and state[2] <= 1.0
         done = not notdone
         ob = self._get_obs()
         return ob, reward, done, dict(
@@ -53,7 +54,8 @@ class AntEnv(MujocoEnv):
         ])
 
     def reset_model(self):
-        qpos = self.init_qpos + self.np_random.uniform(size=self.model.nq, low=-.1, high=.1)
+        qpos = self.init_qpos + \
+            self.np_random.uniform(size=self.model.nq, low=-.1, high=.1)
         qvel = self.init_qvel + self.np_random.randn(self.model.nv) * .1
         self.set_state(qpos, qvel)
         return self._get_obs()
@@ -123,7 +125,8 @@ class AntEnv(MujocoEnv):
             if episode_idx == 0:
                 if encoder is not None:
                     # reset to prior
-                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(1)
+                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(
+                        1)
                     curr_latent_sample = curr_latent_sample[0].to(device)
                     curr_latent_mean = curr_latent_mean[0].to(device)
                     curr_latent_logvar = curr_latent_logvar[0].to(device)
@@ -131,9 +134,12 @@ class AntEnv(MujocoEnv):
                     curr_latent_sample = curr_latent_mean = curr_latent_logvar = None
 
             if encoder is not None:
-                episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                episode_latent_samples[episode_idx].append(
+                    curr_latent_sample[0].clone())
+                episode_latent_means[episode_idx].append(
+                    curr_latent_mean[0].clone())
+                episode_latent_logvars[episode_idx].append(
+                    curr_latent_logvar[0].clone())
 
             for step_idx in range(1, env._max_episode_steps + 1):
 
@@ -147,24 +153,30 @@ class AntEnv(MujocoEnv):
                                                    latent_mean=curr_latent_mean,
                                                    latent_logvar=curr_latent_logvar)
                 _, action = policy.act(state=state.view(-1), latent=latent, belief=belief, task=task,
-                                          deterministic=True)
+                                       deterministic=True)
 
-                (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(env, action, args)
+                (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(
+                    env, action, args)
                 state = state.float().reshape((1, -1)).to(device)
                 task = task.view(-1) if task is not None else None
 
                 # keep track of position
-                pos[episode_idx].append(unwrapped_env.get_body_com("torso")[:2].copy())
+                pos[episode_idx].append(
+                    unwrapped_env.get_body_com("torso")[:2].copy())
 
                 if encoder is not None:
                     # update task embedding
                     curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
-                        action.reshape(1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
+                        action.reshape(
+                            1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
                         hidden_state, return_prior=False)
 
-                    episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                    episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                    episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                    episode_latent_samples[episode_idx].append(
+                        curr_latent_sample[0].clone())
+                    episode_latent_means[episode_idx].append(
+                        curr_latent_mean[0].clone())
+                    episode_latent_logvars[episode_idx].append(
+                        curr_latent_logvar[0].clone())
 
                 episode_next_obs[episode_idx].append(state.clone())
                 episode_rewards[episode_idx].append(rew.clone())
@@ -172,7 +184,8 @@ class AntEnv(MujocoEnv):
 
                 if info[0]['done_mdp'] and not done:
                     start_obs_raw = info[0]['start_state']
-                    start_obs_raw = torch.from_numpy(start_obs_raw).float().reshape((1, -1)).to(device)
+                    start_obs_raw = torch.from_numpy(
+                        start_obs_raw).float().reshape((1, -1)).to(device)
                     start_pos = unwrapped_env.get_body_com("torso")[:2].copy()
                     break
 
@@ -181,8 +194,10 @@ class AntEnv(MujocoEnv):
 
         # clean up
         if encoder is not None:
-            episode_latent_means = [torch.stack(e) for e in episode_latent_means]
-            episode_latent_logvars = [torch.stack(e) for e in episode_latent_logvars]
+            episode_latent_means = [torch.stack(
+                e) for e in episode_latent_means]
+            episode_latent_logvars = [torch.stack(
+                e) for e in episode_latent_logvars]
 
         episode_prev_obs = [torch.cat(e) for e in episode_prev_obs]
         episode_next_obs = [torch.cat(e) for e in episode_next_obs]
@@ -221,15 +236,15 @@ class AntEnv(MujocoEnv):
         plt.tight_layout()
         if image_folder is not None:
             plt.savefig('{}/{}_behaviour'.format(image_folder, iter_idx))
-            plt.close()
+            plt.close('all')
         else:
             plt.show()
 
         if not return_pos:
             return episode_latent_means, episode_latent_logvars, \
-                   episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
-                   episode_returns
+                episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
+                episode_returns
         else:
             return episode_latent_means, episode_latent_logvars, \
-                   episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
-                   episode_returns, pos
+                episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
+                episode_returns, pos

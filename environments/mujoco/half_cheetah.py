@@ -1,7 +1,13 @@
+from contextlib import redirect_stdout
+import progressbar
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from gym.envs.mujoco import HalfCheetahEnv as HalfCheetahEnv_
+
+from utils import helpers as utl
+from scipy.stats import norm
+from scipy.stats import multivariate_normal
 
 from utils import helpers as utl
 
@@ -66,7 +72,7 @@ class HalfCheetahEnv(HalfCheetahEnv_):
             curr_latent_sample = curr_latent_mean = curr_latent_logvar = None
             episode_latent_samples = episode_latent_means = episode_latent_logvars = None
 
-        # --- roll out policy ---
+        #                     # second term is E_{ q(c|tau_{t-k:t-1}) } [ p(s_t, r_t-1 | s_t-1, a_t-1, c) ]
 
         # (re)set environment
         env.reset_task()

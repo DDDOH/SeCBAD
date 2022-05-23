@@ -1,3 +1,5 @@
+# TODO put this into a more appropriate place
+# from adaptivelearner import get_r_t
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -29,7 +31,8 @@ def evaluate(args,
     # (such that we have a minimum of [num_episodes]; the last column is for
     #  any overflow and will be discarded at the end, because we need to wait until
     #  all processes have at least [num_episodes] many episodes)
-    returns_per_episode = torch.zeros((num_processes, num_episodes + 1)).to(device)
+    returns_per_episode = torch.zeros(
+        (num_processes, num_episodes + 1)).to(device)
 
     # --- initialise environments and latents ---
 
@@ -43,19 +46,20 @@ def evaluate(args,
                          normalise_rew=args.norm_rew_for_policy,
                          ret_rms=ret_rms,
                          tasks=tasks,
-                         add_done_info=args.max_rollouts_per_task > 1,
+                         add_done_info=args.max_rollouts_per_task > 1
                          )
     num_steps = envs._max_episode_steps
 
     # reset environments
-    state, belief, task = utl.reset_env(envs, args)
+    state, belief, tasks, _ = utl.reset_env(envs, args)
 
-    # this counts how often an agent has done the same task already
+    # this counts how often an agent has done the same tasks already
     task_count = torch.zeros(num_processes).long().to(device)
 
     if encoder is not None:
         # reset latent state to prior
-        latent_sample, latent_mean, latent_logvar, hidden_state = encoder.prior(num_processes)
+        latent_sample, latent_mean, latent_logvar, hidden_state = encoder.prior(
+            num_processes)
     else:
         latent_sample = latent_mean = latent_logvar = hidden_state = None
 
@@ -68,34 +72,53 @@ def evaluate(args,
                                               policy=policy,
                                               state=state,
                                               belief=belief,
-                                              task=task,
+                                              tasks=tasks,
                                               latent_sample=latent_sample,
                                               latent_mean=latent_mean,
                                               latent_logvar=latent_logvar,
                                               deterministic=True)
 
             # observe reward and next obs
-            [state, belief, task], (rew_raw, rew_normalised), done, infos = utl.env_step(envs, action, args)
+            [state, belief, tasks], (rew_raw, rew_normalised), done, infos = utl.env_step(
+                envs, action, args)
             done_mdp = [info['done_mdp'] for info in infos]
 
-            if encoder is not None:
-                # update the hidden state
-                latent_sample, latent_mean, latent_logvar, hidden_state = utl.update_encoding(encoder=encoder,
-                                                                                              next_obs=state,
-                                                                                              action=action,
-                                                                                              reward=rew_raw,
-                                                                                              done=None,
-                                                                                              hidden_state=hidden_state)
+            if args.enable_adaptivelearner:
+
+                r_t = torch.from_numpy(np.array([info['r_t'] for info in infos], dtype=int)).to(
+                    device).float().view((-1, 1))
+
+                if encoder is not None:
+                    # update the hidden state
+                    latent_sample, latent_mean, latent_logvar, hidden_state = utl.update_encoding(encoder=encoder,
+                                                                                                  next_obs=state,
+                                                                                                  action=action,
+                                                                                                  reward=rew_raw,
+                                                                                                  done=None,
+                                                                                                  hidden_state=hidden_state,
+                                                                                                  r_t=r_t)
+            else:
+                if encoder is not None:
+                    # update the hidden state
+                    latent_sample, latent_mean, latent_logvar, hidden_state = utl.update_encoding(encoder=encoder,
+                                                                                                  next_obs=state,
+                                                                                                  action=action,
+                                                                                                  reward=rew_raw,
+                                                                                                  done=None,
+                                                                                                  hidden_state=hidden_state)
 
             # add rewards
-            returns_per_episode[range(num_processes), task_count] += rew_raw.view(-1)
+            returns_per_episode[range(num_processes),
+                                task_count] += rew_raw.view(-1)
 
             for i in np.argwhere(done_mdp).flatten():
-                # count task up, but cap at num_episodes + 1
-                task_count[i] = min(task_count[i] + 1, num_episodes)  # zero-indexed, so no +1
+                # count tasks up, but cap at num_episodes + 1
+                # zero-indexed, so no +1
+                task_count[i] = min(task_count[i] + 1, num_episodes)
             if np.sum(done) > 0:
                 done_indices = np.argwhere(done.flatten()).flatten()
-                state, belief, task = utl.reset_env(envs, args, indices=done_indices, state=state)
+                state, belief, tasks, _ = utl.reset_env(
+                    envs, args, indices=done_indices, state=state)
 
     envs.close()
 
@@ -125,10 +148,12 @@ def visualise_behaviour(args,
                         device=device,
                         episodes_per_task=args.max_rollouts_per_task,
                         normalise_rew=args.norm_rew_for_policy, ret_rms=ret_rms,
-                        rank_offset=args.num_processes + 42,  # not sure if the temp folders would otherwise clash
-                        tasks=tasks
-                        )
-    episode_task = torch.from_numpy(np.array(env.get_task())).to(device).float()
+                        # not sure if the temp folders would otherwise clash
+                        rank_offset=args.num_processes + 42,
+                        tasks=tasks)
+
+    # 5_13 update plot_vae_loss for changing tasks within one episode
+    # 在 plot_vae_loss 里是有影响的，但是在 plot_behaviour 里没有影响
 
     # get a sample rollout
     unwrapped_env = env.venv.unwrapped.envs[0]
@@ -150,7 +175,7 @@ def visualise_behaviour(args,
     else:
         traj = get_test_rollout(args, env, policy, encoder)
 
-    latent_means, latent_logvars, episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, episode_returns = traj
+    latent_means, latent_logvars, episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, episode_returns, episode_tasks = traj
 
     if latent_means is not None:
         plot_latents(latent_means, latent_logvars,
@@ -158,27 +183,29 @@ def visualise_behaviour(args,
                      iter_idx=iter_idx
                      )
 
-        if not (args.disable_decoder and args.disable_kl_term):
-            plot_vae_loss(args,
-                          latent_means,
-                          latent_logvars,
-                          episode_prev_obs,
-                          episode_next_obs,
-                          episode_actions,
-                          episode_rewards,
-                          episode_task,
-                          image_folder=image_folder,
-                          iter_idx=iter_idx,
-                          reward_decoder=reward_decoder,
-                          state_decoder=state_decoder,
-                          task_decoder=task_decoder,
-                          compute_task_reconstruction_loss=compute_task_reconstruction_loss,
-                          compute_rew_reconstruction_loss=compute_rew_reconstruction_loss,
-                          compute_state_reconstruction_loss=compute_state_reconstruction_loss,
-                          compute_kl_loss=compute_kl_loss,
-                          )
+        # 5_13 skip plot_vae_loss for now
+        # if not (args.disable_decoder and args.disable_kl_term):
+        #     plot_vae_loss(args,
+        #                   latent_means,
+        #                   latent_logvars,
+        #                   episode_prev_obs,
+        #                   episode_next_obs,
+        #                   episode_actions,
+        #                   episode_rewards,
+        #                   episode_tasks,
+        #                   image_folder=image_folder,
+        #                   iter_idx=iter_idx,
+        #                   reward_decoder=reward_decoder,
+        #                   state_decoder=state_decoder,
+        #                   task_decoder=task_decoder,
+        #                   compute_task_reconstruction_loss=compute_task_reconstruction_loss,
+        #                   compute_rew_reconstruction_loss=compute_rew_reconstruction_loss,
+        #                   compute_state_reconstruction_loss=compute_state_reconstruction_loss,
+        #                   compute_kl_loss=compute_kl_loss,
+        #                   )
 
     env.close()
+    return episode_rewards
 
 
 def get_test_rollout(args, env, policy, encoder=None):
@@ -206,9 +233,9 @@ def get_test_rollout(args, env, policy, encoder=None):
 
     # (re)set environment
     env.reset_task()
-    state, belief, task = utl.reset_env(env, args)
+    state, belief, tasks, _ = utl.reset_env(env, args)
     state = state.reshape((1, -1)).to(device)
-    task = task.view(-1) if task is not None else None
+    tasks = tasks.view(-1) if tasks is not None else None
 
     for episode_idx in range(num_episodes):
 
@@ -217,13 +244,17 @@ def get_test_rollout(args, env, policy, encoder=None):
         if encoder is not None:
             if episode_idx == 0:
                 # reset to prior
-                curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(1)
+                curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(
+                    1)
                 curr_latent_sample = curr_latent_sample[0].to(device)
                 curr_latent_mean = curr_latent_mean[0].to(device)
                 curr_latent_logvar = curr_latent_logvar[0].to(device)
-            episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-            episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-            episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+            episode_latent_samples[episode_idx].append(
+                curr_latent_sample[0].clone())
+            episode_latent_means[episode_idx].append(
+                curr_latent_mean[0].clone())
+            episode_latent_logvars[episode_idx].append(
+                curr_latent_logvar[0].clone())
 
         for step_idx in range(1, env._max_episode_steps + 1):
 
@@ -233,16 +264,18 @@ def get_test_rollout(args, env, policy, encoder=None):
                                                latent_sample=curr_latent_sample,
                                                latent_mean=curr_latent_mean,
                                                latent_logvar=curr_latent_logvar)
-            _, action = policy.act(state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
+            _, action = policy.act(
+                state=state.view(-1), latent=latent, belief=belief, tasks=tasks, deterministic=True)
             action = action.reshape((1, *action.shape))
 
             # observe reward and next obs
-            (state, belief, task), (rew_raw, rew_normalised), done, infos = utl.env_step(env, action, args)
+            (state, belief, tasks), (rew_raw,
+                                     rew_normalised), done, infos = utl.env_step(env, action, args)
             state = state.reshape((1, -1)).to(device)
-            task = task.view(-1) if task is not None else None
+            tasks = tasks.view(-1) if tasks is not None else None
 
             if encoder is not None:
-                # update task embedding
+                # update tasks embedding
                 curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
                     action.float().to(device),
                     state,
@@ -250,9 +283,12 @@ def get_test_rollout(args, env, policy, encoder=None):
                     hidden_state,
                     return_prior=False)
 
-                episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                episode_latent_samples[episode_idx].append(
+                    curr_latent_sample[0].clone())
+                episode_latent_means[episode_idx].append(
+                    curr_latent_mean[0].clone())
+                episode_latent_logvars[episode_idx].append(
+                    curr_latent_logvar[0].clone())
 
             episode_next_obs[episode_idx].append(state.clone())
             episode_rewards[episode_idx].append(rew_raw.clone())
@@ -267,7 +303,8 @@ def get_test_rollout(args, env, policy, encoder=None):
     # clean up
     if encoder is not None:
         episode_latent_means = [torch.stack(e) for e in episode_latent_means]
-        episode_latent_logvars = [torch.stack(e) for e in episode_latent_logvars]
+        episode_latent_logvars = [torch.stack(
+            e) for e in episode_latent_logvars]
 
     episode_prev_obs = [torch.cat(e) for e in episode_prev_obs]
     episode_next_obs = [torch.cat(e) for e in episode_next_obs]
@@ -275,8 +312,8 @@ def get_test_rollout(args, env, policy, encoder=None):
     episode_rewards = [torch.cat(r) for r in episode_rewards]
 
     return episode_latent_means, episode_latent_logvars, \
-           episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
-           episode_returns
+        episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
+        episode_returns
 
 
 def plot_latents(latent_means,
@@ -288,6 +325,8 @@ def plot_latents(latent_means,
     Plot mean/variance over time
     """
 
+    # XXX no latent means and logvars actually, cat them together and plot
+
     num_rollouts = len(latent_means)
     num_episode_steps = len(latent_means[0])
 
@@ -296,33 +335,42 @@ def plot_latents(latent_means,
 
     plt.figure(figsize=(12, 5))
 
-    plt.subplot(1, 2, 1)
-    plt.plot(range(latent_means.shape[0]), latent_means, '-', alpha=0.5)
-    plt.plot(range(latent_means.shape[0]), latent_means.mean(axis=1), 'k-')
+    # plt.subplot(1, 2, 1)
+    # plt.plot(range(latent_means.shape[0]), latent_means, '-', alpha=0.5)
+    # plt.plot(range(latent_means.shape[0]), latent_means.mean(axis=1), 'k-')
+    # for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
+    #     span = latent_means.max() - latent_means.min()
+    #     plt.plot([tj + 0.5, tj + 0.5],
+    #              [latent_means.min() - span * 0.05, latent_means.max() + span * 0.05],
+    #              'k--', alpha=0.5)
+    # plt.xlabel('env steps', fontsize=15)
+    # plt.ylabel('latent mean', fontsize=15)
+
+    # plt.subplot(1, 2, 2)
+    # latent_var = np.exp(latent_logvars)
+    # plt.plot(range(latent_logvars.shape[0]), latent_var, '-', alpha=0.5)
+    # plt.plot(range(latent_logvars.shape[0]), latent_var.mean(axis=1), 'k-')
+    # for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
+    #     span = latent_var.max() - latent_var.min()
+    #     plt.plot([tj + 0.5, tj + 0.5],
+    #              [latent_var.min() - span * 0.05, latent_var.max() + span * 0.05],
+    #              'k--', alpha=0.5)
+    # plt.xlabel('env steps', fontsize=15)
+    # plt.ylabel('latent variance', fontsize=15)
+    latent = np.concatenate([latent_means, latent_logvars], axis=1)
+    plt.plot(range(latent.shape[0]), latent, '-', alpha=0.5)
     for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
         span = latent_means.max() - latent_means.min()
         plt.plot([tj + 0.5, tj + 0.5],
                  [latent_means.min() - span * 0.05, latent_means.max() + span * 0.05],
                  'k--', alpha=0.5)
     plt.xlabel('env steps', fontsize=15)
-    plt.ylabel('latent mean', fontsize=15)
-
-    plt.subplot(1, 2, 2)
-    latent_var = np.exp(latent_logvars)
-    plt.plot(range(latent_logvars.shape[0]), latent_var, '-', alpha=0.5)
-    plt.plot(range(latent_logvars.shape[0]), latent_var.mean(axis=1), 'k-')
-    for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
-        span = latent_var.max() - latent_var.min()
-        plt.plot([tj + 0.5, tj + 0.5],
-                 [latent_var.min() - span * 0.05, latent_var.max() + span * 0.05],
-                 'k--', alpha=0.5)
-    plt.xlabel('env steps', fontsize=15)
-    plt.ylabel('latent variance', fontsize=15)
+    plt.ylabel('latent', fontsize=15)
 
     plt.tight_layout()
     if image_folder is not None:
         plt.savefig('{}/{}_latents'.format(image_folder, iter_idx))
-        plt.close()
+        plt.close('all')
     else:
         plt.show()
 
@@ -334,7 +382,7 @@ def plot_vae_loss(args,
                   next_obs,
                   actions,
                   rewards,
-                  task,
+                  tasks,
                   image_folder,
                   iter_idx,
                   reward_decoder,
@@ -359,12 +407,22 @@ def plot_vae_loss(args,
     next_obs = torch.cat(next_obs).to(device)
     actions = torch.cat(actions).to(device)
     rewards = torch.cat(rewards).to(device)
+    tasks = torch.cat(tasks).to(device)
+
+    if actions.dim() == 3:
+        actions = actions.squeeze(1)
 
     # - we will try to make predictions for each tuple in trajectory, hence we need to expand the targets
-    prev_obs = prev_obs.unsqueeze(0).expand(num_samples, *prev_obs.shape).to(device)
-    next_obs = next_obs.unsqueeze(0).expand(num_samples, *next_obs.shape).to(device)
-    actions = actions.unsqueeze(0).expand(num_samples, *actions.shape).to(device)
-    rewards = rewards.unsqueeze(0).expand(num_samples, *rewards.shape).to(device)
+    prev_obs = prev_obs.unsqueeze(0).expand(
+        num_samples, *prev_obs.shape).to(device)
+    next_obs = next_obs.unsqueeze(0).expand(
+        num_samples, *next_obs.shape).to(device)
+    actions = actions.unsqueeze(0).expand(
+        num_samples, *actions.shape).to(device)
+    rewards = rewards.unsqueeze(0).expand(
+        num_samples, *rewards.shape).to(device)
+    tasks = tasks.unsqueeze(0).expand(
+        num_samples, *tasks.shape).to(device)
 
     rew_reconstr_mean = []
     rew_reconstr_std = []
@@ -379,7 +437,7 @@ def plot_vae_loss(args,
     task_pred_std = []
 
     # compute the sum of ELBO_t's by looping through (trajectory length + prior)
-    for i in range(len(latent_means)):
+    for i in range(len(latent_means)):  # iterate for each episode, 1 in our case
 
         curr_latent_mean = latent_means[i]
         curr_latent_logvar = latent_logvars[i]
@@ -387,23 +445,27 @@ def plot_vae_loss(args,
         # compute the reconstruction loss
         if not args.disable_stochasticity_in_latent:
             # take several samples from the latent distribution
-            latent_samples = utl.sample_gaussian(curr_latent_mean.view(-1), curr_latent_logvar.view(-1), num_samples)
+            latent_samples = utl.sample_gaussian(
+                curr_latent_mean.view(-1), curr_latent_logvar.view(-1), num_samples)
         else:
-            latent_samples = torch.cat((curr_latent_mean.view(-1), curr_latent_logvar.view(-1))).unsqueeze(0)
+            latent_samples = torch.cat(
+                (curr_latent_mean.view(-1), curr_latent_logvar.view(-1))).unsqueeze(0)
 
         # expand: each latent sample will be used to make predictions for the entire trajectory
         len_traj = prev_obs.shape[1]
 
         # compute reconstruction losses
         if task_decoder is not None:
-            loss_task, task_pred = compute_task_reconstruction_loss(latent_samples, task, return_predictions=True)
+            loss_task, task_pred = compute_task_reconstruction_loss(
+                latent_samples, tasks, return_predictions=True)
 
             # average/std across the different samples
             task_reconstr_mean.append(loss_task.mean())
             task_reconstr_std.append(loss_task.std())
             task_pred_std.append(task_pred.std())
 
-        latent_samples = latent_samples.unsqueeze(1).expand(num_samples, len_traj, latent_samples.shape[-1])
+        latent_samples = latent_samples.unsqueeze(1).expand(
+            num_samples, len_traj, latent_samples.shape[-1])
 
         if reward_decoder is not None:
             loss_rew, rew_pred = compute_rew_reconstruction_loss(latent_samples, prev_obs, next_obs,
@@ -448,7 +510,7 @@ def plot_vae_loss(args,
     plt.tight_layout()
     if image_folder is not None:
         plt.savefig('{}/{}_kl'.format(image_folder, iter_idx))
-        plt.close()
+        plt.close('all')
     else:
         plt.show()
 
@@ -456,7 +518,8 @@ def plot_vae_loss(args,
 
     if reward_decoder is not None:
 
-        rew_reconstr_mean = torch.stack(rew_reconstr_mean).detach().cpu().numpy()
+        rew_reconstr_mean = torch.stack(
+            rew_reconstr_mean).detach().cpu().numpy()
         rew_reconstr_std = torch.stack(rew_reconstr_std).detach().cpu().numpy()
         rew_pred_std = torch.stack(rew_pred_std).detach().cpu().numpy()
 
@@ -482,14 +545,16 @@ def plot_vae_loss(args,
         for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
             span = rew_pred_std.max() - rew_pred_std.min()
             plt.plot([tj + 0.5, tj + 0.5],
-                     [rew_pred_std.min() - span * 0.05, rew_pred_std.max() + span * 0.05],
+                     [rew_pred_std.min() - span * 0.05,
+                      rew_pred_std.max() + span * 0.05],
                      'k--', alpha=0.5)
         plt.xlabel('env steps', fontsize=15)
         plt.ylabel('std of rew reconstruction', fontsize=15)
         plt.tight_layout()
         if image_folder is not None:
-            plt.savefig('{}/{}_rew_reconstruction'.format(image_folder, iter_idx))
-            plt.close()
+            plt.savefig(
+                '{}/{}_rew_reconstruction'.format(image_folder, iter_idx))
+            plt.close('all')
         else:
             plt.show()
 
@@ -499,8 +564,10 @@ def plot_vae_loss(args,
 
         plt.figure(figsize=(12, 5))
 
-        state_reconstr_mean = torch.stack(state_reconstr_mean).detach().cpu().numpy()
-        state_reconstr_std = torch.stack(state_reconstr_std).detach().cpu().numpy()
+        state_reconstr_mean = torch.stack(
+            state_reconstr_mean).detach().cpu().numpy()
+        state_reconstr_std = torch.stack(
+            state_reconstr_std).detach().cpu().numpy()
         state_pred_std = torch.stack(state_pred_std).detach().cpu().numpy()
 
         plt.subplot(1, 2, 1)
@@ -524,25 +591,29 @@ def plot_vae_loss(args,
         for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
             span = state_pred_std.max() - state_pred_std.min()
             plt.plot([tj + 0.5, tj + 0.5],
-                     [state_pred_std.min() - span * 0.05, state_pred_std.max() + span * 0.05],
+                     [state_pred_std.min() - span * 0.05,
+                      state_pred_std.max() + span * 0.05],
                      'k--', alpha=0.5)
         plt.xlabel('env steps', fontsize=15)
         plt.ylabel('std of state reconstruction', fontsize=15)
         plt.tight_layout()
         if image_folder is not None:
-            plt.savefig('{}/{}_state_reconstruction'.format(image_folder, iter_idx))
-            plt.close()
+            plt.savefig(
+                '{}/{}_state_reconstruction'.format(image_folder, iter_idx))
+            plt.close('all')
         else:
             plt.show()
 
-    # --- plot task reconstruction ---
+    # --- plot tasks reconstruction ---
 
     if task_decoder is not None:
 
         plt.figure(figsize=(12, 5))
 
-        task_reconstr_mean = torch.stack(task_reconstr_mean).detach().cpu().numpy()
-        task_reconstr_std = torch.stack(task_reconstr_std).detach().cpu().numpy()
+        task_reconstr_mean = torch.stack(
+            task_reconstr_mean).detach().cpu().numpy()
+        task_reconstr_std = torch.stack(
+            task_reconstr_std).detach().cpu().numpy()
         task_pred_std = torch.stack(task_pred_std).detach().cpu().numpy()
 
         plt.subplot(1, 2, 1)
@@ -559,20 +630,22 @@ def plot_vae_loss(args,
                      [min_y - span * 0.05, max_y + span * 0.05],
                      'k--', alpha=0.5)
         plt.xlabel('env steps', fontsize=15)
-        plt.ylabel('task reconstruction error', fontsize=15)
+        plt.ylabel('tasks reconstruction error', fontsize=15)
 
         plt.subplot(1, 2, 2)
         plt.plot(x, task_pred_std, 'b-')
         for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
             span = task_pred_std.max() - task_pred_std.min()
             plt.plot([tj + 0.5, tj + 0.5],
-                     [task_pred_std.min() - span * 0.05, task_pred_std.max() + span * 0.05],
+                     [task_pred_std.min() - span * 0.05,
+                      task_pred_std.max() + span * 0.05],
                      'k--', alpha=0.5)
         plt.xlabel('env steps', fontsize=15)
-        plt.ylabel('std of task reconstruction', fontsize=15)
+        plt.ylabel('std of tasks reconstruction', fontsize=15)
         plt.tight_layout()
         if image_folder is not None:
-            plt.savefig('{}/{}_task_reconstruction'.format(image_folder, iter_idx))
-            plt.close()
+            plt.savefig(
+                '{}/{}_task_reconstruction'.format(image_folder, iter_idx))
+            plt.close('all')
         else:
             plt.show()

@@ -1,3 +1,4 @@
+# from adaptivelearner import get_r_t
 import itertools
 import math
 import random
@@ -16,7 +17,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class GridNaviNonStationary(gym.Env):
-    def __init__(self, num_cells=5, num_steps=15):
+    # def __init__(self, num_cells=4, num_steps=25, change_interval=12):
+    def __init__(self, change_interval=5, num_cells=5, num_steps=25, wind_vector=(0.5, -0.5)):
         super(GridNaviNonStationary, self).__init__()
 
         self.seed()
@@ -46,6 +48,8 @@ class GridNaviNonStationary(gym.Env):
         self.task_dim = 2
         self.num_tasks = self.num_states
 
+        self.wind_vector = np.array(wind_vector)
+
         # reset the environment state
         self._env_state = np.array(self.starting_state)
         # reset the goal
@@ -53,13 +57,23 @@ class GridNaviNonStationary(gym.Env):
         # reset the belief
         self._belief_state = self._reset_belief()
 
-        self.change_goal_prob = 0.1
+        # self.change_goal_prob = 0.5
+
+        self.change_interval = change_interval
+
+        self.step_num = 0
 
     def reset_task(self, task=None):
+        # if task is None:
+        #     self._goal = np.array(random.choice(self.possible_goals))
+        #     # print('the goal is now changed to {}'.format(self._goal))
+        # else:
+        #     self._goal = np.array(task)
+        self._goal = np.array([self.num_cells - 2, self.num_cells - 2])
         if task is None:
-            self._goal = np.array(random.choice(self.possible_goals))
+            self.wind_vector = np.random.uniform(-0.9, 0.9, size=2)
         else:
-            self._goal = np.array(task)
+            self.wind_vector = np.array(task)
         self._reset_belief()
         return self._goal
 
@@ -108,23 +122,44 @@ class GridNaviNonStationary(gym.Env):
         Moving the agent between states
         """
 
+        wind_bias = [np.random.binomial(n=1, p=abs(self.wind_vector[0])) * np.sign(self.wind_vector[0]),
+                     np.random.binomial(n=1, p=abs(self.wind_vector[1])) * np.sign(self.wind_vector[1])]
+
         if action == 1:  # up
-            self._env_state[1] = min(
-                [self._env_state[1] + 1, self.num_cells - 1])
+            self._env_state[1] = self._env_state[1] + 1 + wind_bias[1]
         elif action == 2:  # right
-            self._env_state[0] = min(
-                [self._env_state[0] + 1, self.num_cells - 1])
+            self._env_state[0] = self._env_state[0] + 1 + wind_bias[0]
         elif action == 3:  # down
-            self._env_state[1] = max([self._env_state[1] - 1, 0])
+            self._env_state[1] = self._env_state[1] - 1 + wind_bias[1]
         elif action == 4:  # left
-            self._env_state[0] = max([self._env_state[0] - 1, 0])
+            self._env_state[0] = self._env_state[0] - 1 + wind_bias[0]
+
+        self._env_state[0] = min([self._env_state[0], self.num_cells - 1])
+        self._env_state[1] = min([self._env_state[1], self.num_cells - 1])
+        self._env_state[0] = max([self._env_state[0], 0])
+        self._env_state[1] = max([self._env_state[1], 0])
+
+        # if action == 1:  # up
+        #     self._env_state[1] = min(
+        #         [self._env_state[1] + 1, self.num_cells - 1])
+        # elif action == 2:  # right
+        #     self._env_state[0] = min(
+        #         [self._env_state[0] + 1, self.num_cells - 1])
+        # elif action == 3:  # down
+        #     self._env_state[1] = max([self._env_state[1] - 1, 0])
+        # elif action == 4:  # left
+        #     self._env_state[0] = max([self._env_state[0] - 1, 0])
 
         return self._env_state
 
     def step(self, action):
+        self.step_num += 1
 
         # whether change the goal
-        if random.random() < self.change_goal_prob:
+        # if random.random() < self.change_goal_prob:
+        #     self._goal = self.reset_task()
+
+        if self.step_num % self.change_interval == 0:
             self._goal = self.reset_task()
 
         if isinstance(action, np.ndarray) and action.ndim == 1:
@@ -154,7 +189,8 @@ class GridNaviNonStationary(gym.Env):
         task_id = self.task_to_id(task)
         info = {'task': task,
                 'task_id': task_id,
-                'belief': self.get_belief()}
+                'belief': self.get_belief(),
+                'curr_step': self.step_num}
         return state, reward, done, info
 
     def task_to_id(self, goals):
@@ -174,7 +210,7 @@ class GridNaviNonStationary(gym.Env):
             goals = goals.reshape(-1, goals.shape[-1])
 
         classes = mat[goals[:, 0], goals[:, 1]]
-        classes = classes.reshape(goal_shape[:-1])
+        classes = classes.reshape(goal_shape[: -1])
 
         return classes
 
@@ -209,7 +245,7 @@ class GridNaviNonStationary(gym.Env):
             pos = self.id_to_task(pos.argmax(dim=1))
         return pos
 
-    @staticmethod
+    @ staticmethod
     def visualise_behaviour(env,
                             args,
                             policy,
@@ -239,6 +275,9 @@ class GridNaviNonStationary(gym.Env):
         episode_lengths = []
 
         episode_goals = []
+
+        changing_goals = []
+
         if args.pass_belief_to_policy and (encoder is None):
             episode_beliefs = [[] for _ in range(num_episodes)]
         else:
@@ -257,7 +296,7 @@ class GridNaviNonStationary(gym.Env):
         # --- roll out policy ---
 
         env.reset_task()
-        [state, belief, task] = utl.reset_env(env, args)
+        [state, belief, task, info] = utl.reset_env(env, args)
         start_obs = state.clone()
 
         for episode_idx in range(args.max_rollouts_per_task):
@@ -287,6 +326,8 @@ class GridNaviNonStationary(gym.Env):
             if args.pass_belief_to_policy and (encoder is None):
                 episode_beliefs[episode_idx].append(belief)
 
+            curr_rollout_goal.append(env.get_task().copy())
+
             for step_idx in range(1, env._max_episode_steps + 1):
 
                 if step_idx == 1:
@@ -309,25 +350,66 @@ class GridNaviNonStationary(gym.Env):
                                                   curr_latent_logvar is not None) else None,
                                               )
 
+                # changing_goals[episode_idx].append(env.get_task())
+                # print(step_idx, len(changing_goals[episode_idx]))
+
                 # observe reward and next obs
                 [state, belief, task], (rew_raw, rew_normalised), done, infos = utl.env_step(
                     env, action, args)
 
-                if encoder is not None:
-                    # update task embedding
-                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
-                        action.float().to(device),
-                        state,
-                        rew_raw.reshape((1, 1)).float().to(device),
-                        hidden_state,
-                        return_prior=False)
+                # reset hidden_state if done or r_t == 0
+                if args.enable_adaptivelearner:
+                    r_t = torch.from_numpy(np.array([info['r_t'] for info in infos], dtype=int)).to(
+                        device).float().view((-1, 1))
 
-                    episode_latent_samples[episode_idx].append(
-                        curr_latent_sample[0].clone())
-                    episode_latent_means[episode_idx].append(
-                        curr_latent_mean[0].clone())
-                    episode_latent_logvars[episode_idx].append(
-                        curr_latent_logvar[0].clone())
+                    if encoder is not None:
+                        # update task embedding
+                        # curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
+                        #     action.float().to(device),
+                        #     state,
+                        #     rew_raw.reshape((1, 1)).float().to(device),
+                        #     hidden_state,
+                        #     return_prior=False)
+
+                        # update the hidden state
+                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = utl.update_encoding(encoder=encoder,
+                                                                                                                     next_obs=state,
+                                                                                                                     action=action,
+                                                                                                                     reward=rew_raw,
+                                                                                                                     done=None,
+                                                                                                                     hidden_state=hidden_state,
+                                                                                                                     r_t=r_t)
+
+                        episode_latent_samples[episode_idx].append(
+                            curr_latent_sample[0].clone())
+                        episode_latent_means[episode_idx].append(
+                            curr_latent_mean[0].clone())
+                        episode_latent_logvars[episode_idx].append(
+                            curr_latent_logvar[0].clone())
+                else:
+                    if encoder is not None:
+                        # update task embedding
+                        # curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
+                        #     action.float().to(device),
+                        #     state,
+                        #     rew_raw.reshape((1, 1)).float().to(device),
+                        #     hidden_state,
+                        #     return_prior=False)
+
+                        # update the hidden state
+                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = utl.update_encoding(encoder=encoder,
+                                                                                                                     next_obs=state,
+                                                                                                                     action=action,
+                                                                                                                     reward=rew_raw,
+                                                                                                                     done=None,
+                                                                                                                     hidden_state=hidden_state)
+
+                        episode_latent_samples[episode_idx].append(
+                            curr_latent_sample[0].clone())
+                        episode_latent_means[episode_idx].append(
+                            curr_latent_mean[0].clone())
+                        episode_latent_logvars[episode_idx].append(
+                            curr_latent_logvar[0].clone())
 
                 episode_all_obs[episode_idx].append(state.clone())
                 episode_next_obs[episode_idx].append(state.clone())
@@ -349,6 +431,7 @@ class GridNaviNonStationary(gym.Env):
             episode_returns.append(sum(curr_rollout_rew))
             episode_lengths.append(step_idx)
             episode_goals.append(curr_goal)
+            changing_goals.append(curr_rollout_goal)
 
         # clean up
 
@@ -367,7 +450,7 @@ class GridNaviNonStationary(gym.Env):
 
         rew_pred_means, rew_pred_vars = plot_bb(env, args, episode_all_obs, episode_goals, reward_decoder,
                                                 episode_latent_means, episode_latent_logvars,
-                                                image_folder, iter_idx, episode_beliefs)
+                                                image_folder, iter_idx, episode_beliefs, changing_goals)
 
         if reward_decoder:
             plot_rew_reconstruction(
@@ -424,13 +507,13 @@ def plot_rew_reconstruction(env,
     plt.tight_layout()
     if image_folder is not None:
         plt.savefig('{}/{}_rew_decoder'.format(image_folder, iter_idx))
-        plt.close()
+        plt.close('all')
     else:
         plt.show()
 
 
 def plot_bb(env, args, episode_all_obs, episode_goals, reward_decoder,
-            episode_latent_means, episode_latent_logvars, image_folder, iter_idx, episode_beliefs):
+            episode_latent_means, episode_latent_logvars, image_folder, iter_idx, episode_beliefs, changing_goals):
     """
     Plot behaviour and belief.
     """
@@ -449,7 +532,8 @@ def plot_bb(env, args, episode_all_obs, episode_goals, reward_decoder,
         for step_idx in range(num_steps):
 
             curr_obs = episode_all_obs[episode_idx][:step_idx + 1]
-            curr_goal = episode_goals[episode_idx]
+            # curr_goal = episode_goals[episode_idx]
+            curr_goal = changing_goals[episode_idx][step_idx]
 
             if episode_latent_means is not None:
                 curr_means = episode_latent_means[episode_idx][:step_idx + 1]
@@ -494,7 +578,7 @@ def plot_bb(env, args, episode_all_obs, episode_goals, reward_decoder,
     plt.tight_layout()
     if image_folder is not None:
         plt.savefig('{}/{}_behaviour'.format(image_folder, iter_idx))
-        plt.close()
+        plt.close('all')
     else:
         plt.show()
 

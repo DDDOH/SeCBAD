@@ -22,8 +22,10 @@ class StateTransitionDecoder(nn.Module):
 
         self.args = args
 
-        self.state_encoder = utl.FeatureExtractor(state_dim, state_embed_dim, F.relu)
-        self.action_encoder = utl.FeatureExtractor(action_dim, action_embed_dim, F.relu)
+        self.state_encoder = utl.FeatureExtractor(
+            state_dim, state_embed_dim, F.relu)
+        self.action_encoder = utl.FeatureExtractor(
+            action_dim, action_embed_dim, F.relu)
 
         curr_input_dim = latent_dim + state_embed_dim + action_embed_dim
         self.fc_layers = nn.ModuleList([])
@@ -86,9 +88,11 @@ class RewardDecoder(nn.Module):
             self.fc_out = nn.Linear(curr_input_dim, num_states)
         else:
             # get state as input and predict reward prob
-            self.state_encoder = utl.FeatureExtractor(state_dim, state_embed_dim, F.relu)
+            self.state_encoder = utl.FeatureExtractor(
+                state_dim, state_embed_dim, F.relu)
             if self.input_action:
-                self.action_encoder = utl.FeatureExtractor(action_dim, action_embed_dim, F.relu)
+                self.action_encoder = utl.FeatureExtractor(
+                    action_dim, action_embed_dim, F.relu)
             else:
                 self.action_encoder = None
             curr_input_dim = latent_dim + state_embed_dim

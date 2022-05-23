@@ -15,7 +15,7 @@ def _flatten_helper(T, N, _tensor):
     return _tensor.reshape(T * N, *_tensor.size()[2:])
 
 
-class OnlineStorage(object):
+class AdaptiveOnlineStorage(object):
     def __init__(self,
                  args, num_steps, num_processes,
                  state_dim, belief_dim, task_dim,
@@ -72,6 +72,8 @@ class OnlineStorage(object):
         self.masks = torch.ones(num_steps + 1, num_processes, 1)
         # masks that indicate whether it's a true terminal state (false) or time limit end state (true)
         self.bad_masks = torch.ones(num_steps + 1, num_processes, 1)
+        self.r_t = torch.zeros(
+            num_steps + 1, num_processes, 1)  # TODO +1 or not?
 
         # actions
         if action_space.__class__.__name__ == 'Discrete':
@@ -127,6 +129,7 @@ class OnlineStorage(object):
                masks,
                bad_masks,
                done,
+               r_t,
                #
                hidden_states=None,
                latent_sample=None,
@@ -134,6 +137,22 @@ class OnlineStorage(object):
                latent_logvar=None,
                **kwargs,
                ):
+        # this is how insert function is called in the 'for step in range(self.args.policy_num_steps):' loop in adaptivelearner.py
+        # state=next_state,
+        # belief=belief,
+        # task=task,
+        # actions=action,
+        # rewards_raw=rew_raw,
+        # rewards_normalised=rew_normalised,
+        # value_preds=value,
+        # masks=masks_done,
+        # bad_masks=bad_masks,
+        # done=done,
+        # r_t=r_t,
+        # hidden_states=hidden_state.squeeze(0),
+        # latent_sample=latent_sample,
+        # latent_mean=latent_mean,
+        # latent_logvar=latent_logvar,
         self.prev_state[self.step + 1].copy_(state)
         if self.args.pass_belief_to_policy:
             self.beliefs[self.step + 1].copy_(belief)
@@ -147,7 +166,7 @@ class OnlineStorage(object):
         self.actions[self.step] = actions.detach().clone()
         self.rewards_raw[self.step].copy_(rewards_raw)
         self.rewards_normalised[self.step].copy_(rewards_normalised)
-        if 'ctrl_reward' in kwargs.keys() and kwargs['ctrl_reward'] is not None:
+        if 'ctrl_reward' in kwargs.keys():
             self.ctrl_reward[self.step].copy_(kwargs['ctrl_reward'])
             self.vel_reward[self.step].copy_(kwargs['vel_reward'])
         if isinstance(value_preds, list):
@@ -157,6 +176,7 @@ class OnlineStorage(object):
         self.masks[self.step + 1].copy_(masks)
         self.bad_masks[self.step + 1].copy_(bad_masks)
         self.done[self.step + 1].copy_(done)
+        self.r_t[self.step + 1].copy_(r_t)
         self.step = (self.step + 1) % self.num_steps
 
     def after_update(self):
@@ -187,11 +207,14 @@ class OnlineStorage(object):
                               gamma=gamma, tau=tau, use_gae=use_gae, use_proper_time_limits=use_proper_time_limits)
 
     def _compute_returns(self, next_value, rewards, value_preds, returns, gamma, tau, use_gae, use_proper_time_limits):
-
+        # XXX 直接在 input 进来的 returns 上更新，有点像 discount reward 的那种，但还不太清楚具体公式，以及用处是什么
+        # next_value: reward for next step predicted by the network
+        # ppo.py 里有这么一行：
+        # advantages = policy_storage.returns[:-1] - policy_storage.value_preds[:-1]
         if use_proper_time_limits:
             if use_gae:
                 value_preds[-1] = next_value
-                gae = 0
+                gae = 0  # gae 是 generalized advantage estimation 的缩写
                 for step in reversed(range(rewards.size(0))):
                     delta = rewards[step] + gamma * value_preds[step +
                                                                 1] * self.masks[step + 1] - value_preds[step]
@@ -229,6 +252,8 @@ class OnlineStorage(object):
                                                self.latent_mean[:-1]) if self.latent_mean is not None else None,
                                            latent_logvar=torch.stack(
                                                self.latent_logvar[:-1]) if self.latent_mean is not None else None)
+        # given policy, 看到 storage 里的 prev_state 后会得到一个 policy 认为的 action 分布，
+        # action_log_probs 算的是 storage 里的 actions 在 policy 认为的 action 分布上的 log_prob
         _, action_log_probs, _ = policy.evaluate_actions(self.prev_state[:-1],
                                                          latent,
                                                          self.beliefs[:-

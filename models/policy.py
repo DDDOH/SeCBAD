@@ -160,6 +160,11 @@ class Policy(nn.Module):
 
         # handle inputs (normalise + embed)
 
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+        if latent.dim() == 1:
+            latent = latent.unsqueeze(0)
+        
         if self.pass_state_to_policy:
             if self.norm_state:
                 state = (state - self.state_rms.mean) / torch.sqrt(self.state_rms.var + 1e-8)

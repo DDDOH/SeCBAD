@@ -53,7 +53,8 @@ class PointEnv(Env):
 
         self.reset_task()
         self.task_dim = 2
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,))
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(2,))
         # we convert the actions from [-1, 1] to [-0.1, 0.1] in the step() function
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,))
         self._max_episode_steps = max_episode_steps
@@ -152,7 +153,8 @@ class PointEnv(Env):
             if episode_idx == 0:
                 if encoder is not None:
                     # reset to prior
-                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(1)
+                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(
+                        1)
                     curr_latent_sample = curr_latent_sample[0].to(device)
                     curr_latent_mean = curr_latent_mean[0].to(device)
                     curr_latent_logvar = curr_latent_logvar[0].to(device)
@@ -160,9 +162,12 @@ class PointEnv(Env):
                     curr_latent_sample = curr_latent_mean = curr_latent_logvar = None
 
             if encoder is not None:
-                episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                episode_latent_samples[episode_idx].append(
+                    curr_latent_sample[0].clone())
+                episode_latent_means[episode_idx].append(
+                    curr_latent_mean[0].clone())
+                episode_latent_logvars[episode_idx].append(
+                    curr_latent_logvar[0].clone())
 
             for step_idx in range(1, env._max_episode_steps + 1):
 
@@ -178,7 +183,8 @@ class PointEnv(Env):
                 _, action = policy.act(state=state.view(-1), latent=latent, belief=belief, task=task,
                                        deterministic=True)
 
-                (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(env, action, args)
+                (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(
+                    env, action, args)
                 state = state.float().reshape((1, -1)).to(device)
                 task = task.view(-1) if task is not None else None
 
@@ -188,12 +194,16 @@ class PointEnv(Env):
                 if encoder is not None:
                     # update task embedding
                     curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
-                        action.reshape(1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
+                        action.reshape(
+                            1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
                         hidden_state, return_prior=False)
 
-                    episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                    episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                    episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                    episode_latent_samples[episode_idx].append(
+                        curr_latent_sample[0].clone())
+                    episode_latent_means[episode_idx].append(
+                        curr_latent_mean[0].clone())
+                    episode_latent_logvars[episode_idx].append(
+                        curr_latent_logvar[0].clone())
 
                 episode_next_obs[episode_idx].append(state.clone())
                 episode_rewards[episode_idx].append(rew.clone())
@@ -201,7 +211,8 @@ class PointEnv(Env):
 
                 if info[0]['done_mdp'] and not done:
                     start_obs_raw = info[0]['start_state']
-                    start_obs_raw = torch.from_numpy(start_obs_raw).float().reshape((1, -1)).to(device)
+                    start_obs_raw = torch.from_numpy(
+                        start_obs_raw).float().reshape((1, -1)).to(device)
                     start_pos = start_obs_raw
                     break
 
@@ -210,8 +221,10 @@ class PointEnv(Env):
 
         # clean up
         if encoder is not None:
-            episode_latent_means = [torch.stack(e) for e in episode_latent_means]
-            episode_latent_logvars = [torch.stack(e) for e in episode_latent_logvars]
+            episode_latent_means = [torch.stack(
+                e) for e in episode_latent_means]
+            episode_latent_logvars = [torch.stack(
+                e) for e in episode_latent_logvars]
 
         episode_prev_obs = [torch.cat(e) for e in episode_prev_obs]
         episode_next_obs = [torch.cat(e) for e in episode_next_obs]
@@ -225,16 +238,19 @@ class PointEnv(Env):
             ylim = (-0.3, 1.3)
         else:
             ylim = (-1.3, 1.3)
-        color_map = mpl.colors.ListedColormap(sns.color_palette("husl", num_episodes))
+        color_map = mpl.colors.ListedColormap(
+            sns.color_palette("husl", num_episodes))
 
-        observations = torch.stack([episode_prev_obs[i]for i in range(num_episodes)]).cpu().numpy()
+        observations = torch.stack([episode_prev_obs[i]
+                                   for i in range(num_episodes)]).cpu().numpy()
         curr_task = env.get_task()
 
         # plot goal
         axis.scatter(*curr_task, marker='x', color='k', s=50)
         # radius where we get reward
         if hasattr(self, 'goal_radius'):
-            circle1 = plt.Circle(curr_task, self.goal_radius, color='c', alpha=0.2, edgecolor='none')
+            circle1 = plt.Circle(curr_task, self.goal_radius,
+                                 color='c', alpha=0.2, edgecolor='none')
             plt.gca().add_artist(circle1)
 
         for i in range(num_episodes):
@@ -261,30 +277,33 @@ class PointEnv(Env):
         plt.legend()
         plt.tight_layout()
         if image_folder is not None:
-            plt.savefig('{}/{}_behaviour.png'.format(image_folder, iter_idx), dpi=300, bbox_inches='tight')
-            plt.close()
+            plt.savefig('{}/{}_behaviour.png'.format(image_folder,
+                        iter_idx), dpi=300, bbox_inches='tight')
+            plt.close('all')
         else:
             plt.show()
 
-        plt_rew = [episode_rewards[i][:episode_lengths[i]] for i in range(len(episode_rewards))]
+        plt_rew = [episode_rewards[i][:episode_lengths[i]]
+                   for i in range(len(episode_rewards))]
         plt.plot(torch.cat(plt_rew).view(-1).cpu().numpy())
         plt.xlabel('env step')
         plt.ylabel('reward per step')
         plt.tight_layout()
         if image_folder is not None:
-            plt.savefig('{}/{}_rewards.png'.format(image_folder, iter_idx), dpi=300, bbox_inches='tight')
-            plt.close()
+            plt.savefig('{}/{}_rewards.png'.format(image_folder,
+                        iter_idx), dpi=300, bbox_inches='tight')
+            plt.close('all')
         else:
             plt.show()
 
         if not return_pos:
             return episode_latent_means, episode_latent_logvars, \
-                   episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
-                   episode_returns
+                episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
+                episode_returns
         else:
             return episode_latent_means, episode_latent_logvars, \
-                   episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
-                   episode_returns, pos
+                episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
+                episode_returns, pos
 
 
 class SparsePointEnv(PointEnv):

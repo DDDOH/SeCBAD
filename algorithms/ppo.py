@@ -41,18 +41,22 @@ class PPO:
 
         # optimiser
         if policy_optimiser == 'adam':
-            self.optimiser = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
+            self.optimiser = optim.Adam(
+                actor_critic.parameters(), lr=lr, eps=eps)
         elif policy_optimiser == 'rmsprop':
-            self.optimiser = optim.RMSprop(actor_critic.parameters(), lr=lr, eps=eps, alpha=0.99)
+            self.optimiser = optim.RMSprop(
+                actor_critic.parameters(), lr=lr, eps=eps, alpha=0.99)
         self.optimiser_vae = optimiser_vae
 
         self.lr_scheduler_policy = None
         self.lr_scheduler_encoder = None
         if policy_anneal_lr:
-            lam = lambda f: 1 - f / train_steps
-            self.lr_scheduler_policy = optim.lr_scheduler.LambdaLR(self.optimiser, lr_lambda=lam)
+            def lam(f): return 1 - f / train_steps
+            self.lr_scheduler_policy = optim.lr_scheduler.LambdaLR(
+                self.optimiser, lr_lambda=lam)
             if hasattr(self.args, 'rlloss_through_encoder') and self.args.rlloss_through_encoder:
-                self.lr_scheduler_encoder = optim.lr_scheduler.LambdaLR(self.optimiser_vae, lr_lambda=lam)
+                self.lr_scheduler_encoder = optim.lr_scheduler.LambdaLR(
+                    self.optimiser_vae, lr_lambda=lam)
 
     def update(self,
                policy_storage,
@@ -62,8 +66,10 @@ class PPO:
                ):
 
         # -- get action values --
-        advantages = policy_storage.returns[:-1] - policy_storage.value_preds[:-1]
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+        advantages = policy_storage.returns[:-
+                                            1] - policy_storage.value_preds[:-1]
+        advantages = (advantages - advantages.mean()) / \
+            (advantages.std() + 1e-5)
 
         # if this is true, we will update the VAE at every PPO update
         # otherwise, we update it after we update the policy
@@ -74,7 +80,8 @@ class PPO:
                                                                                       'tbptt_stepsize') else None)
 
         # update the normalisation parameters of policy inputs before updating
-        self.actor_critic.update_rms(args=self.args, policy_storage=policy_storage)
+        self.actor_critic.update_rms(
+            args=self.args, policy_storage=policy_storage)
 
         # call this to make sure that the action_log_probs are computed
         # (needs to be done right here because of some caching thing when normalising actions)
@@ -86,12 +93,13 @@ class PPO:
         loss_epoch = 0
         for e in range(self.ppo_epoch):
 
-            data_generator = policy_storage.feed_forward_generator(advantages, self.num_mini_batch)
+            data_generator = policy_storage.feed_forward_generator(
+                advantages, self.num_mini_batch)
             for sample in data_generator:
 
                 state_batch, belief_batch, task_batch, \
-                actions_batch, latent_sample_batch, latent_mean_batch, latent_logvar_batch, value_preds_batch, \
-                return_batch, old_action_log_probs_batch, adv_targ = sample
+                    actions_batch, latent_sample_batch, latent_mean_batch, latent_logvar_batch, value_preds_batch, \
+                    return_batch, old_action_log_probs_batch, adv_targ = sample
 
                 if not rlloss_through_encoder:
                     state_batch = state_batch.detach()
@@ -114,23 +122,29 @@ class PPO:
                 ratio = torch.exp(action_log_probs -
                                   old_action_log_probs_batch)
                 surr1 = ratio * adv_targ
-                surr2 = torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
+                surr2 = torch.clamp(
+                    ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
                 action_loss = -torch.min(surr1, surr2).mean()
 
                 if self.use_huber_loss and self.use_clipped_value_loss:
                     value_pred_clipped = value_preds_batch + (values - value_preds_batch).clamp(-self.clip_param,
                                                                                                 self.clip_param)
-                    value_losses = F.smooth_l1_loss(values, return_batch, reduction='none')
-                    value_losses_clipped = F.smooth_l1_loss(value_pred_clipped, return_batch, reduction='none')
-                    value_loss = 0.5 * torch.max(value_losses, value_losses_clipped).mean()
+                    value_losses = F.smooth_l1_loss(
+                        values, return_batch, reduction='none')
+                    value_losses_clipped = F.smooth_l1_loss(
+                        value_pred_clipped, return_batch, reduction='none')
+                    value_loss = 0.5 * \
+                        torch.max(value_losses, value_losses_clipped).mean()
                 elif self.use_huber_loss:
                     value_loss = F.smooth_l1_loss(values, return_batch)
                 elif self.use_clipped_value_loss:
                     value_pred_clipped = value_preds_batch + (values - value_preds_batch).clamp(-self.clip_param,
                                                                                                 self.clip_param)
                     value_losses = (values - return_batch).pow(2)
-                    value_losses_clipped = (value_pred_clipped - return_batch).pow(2)
-                    value_loss = 0.5 * torch.max(value_losses, value_losses_clipped).mean()
+                    value_losses_clipped = (
+                        value_pred_clipped - return_batch).pow(2)
+                    value_loss = 0.5 * \
+                        torch.max(value_losses, value_losses_clipped).mean()
                 else:
                     value_loss = 0.5 * (return_batch - values).pow(2).mean()
 
@@ -140,7 +154,12 @@ class PPO:
                     self.optimiser_vae.zero_grad()
 
                 # compute policy loss and backprop
-                loss = value_loss * self.value_loss_coef + action_loss - dist_entropy * self.entropy_coef
+                # value_loss: loss for value function, step 7 in https://spinningup.openai.com/en/latest/algorithms/ppo.html#pseudocode
+                # action_loss: loss for policy, step 6 in https://spinningup.openai.com/en/latest/algorithms/ppo.html#pseudocode
+                # XXX 此项存疑 dist_entropy: equation 7 in VariBAD, 似乎因为 gridworld 是 categorical 的，所以可以不用 equation 8
+                # vae_loss: seems not used
+                loss = value_loss * self.value_loss_coef + \
+                    action_loss - dist_entropy * self.entropy_coef
 
                 # compute vae loss and backprop
                 if rlloss_through_encoder:
@@ -150,10 +169,12 @@ class PPO:
                 loss.backward()
 
                 # clip gradients
-                nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.args.policy_max_grad_norm)
+                nn.utils.clip_grad_norm_(
+                    self.actor_critic.parameters(), self.args.policy_max_grad_norm)
                 if rlloss_through_encoder:
                     if self.args.encoder_max_grad_norm is not None:
-                        nn.utils.clip_grad_norm_(encoder.parameters(), self.args.encoder_max_grad_norm)
+                        nn.utils.clip_grad_norm_(
+                            encoder.parameters(), self.args.encoder_max_grad_norm)
 
                 # update
                 self.optimiser.step()

@@ -22,6 +22,22 @@ register(
 )
 
 register(
+    'AntDir2DNonstationary-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.ant_dir_nonstationary:AntDir2DNonstationary',
+            'max_episode_steps': 200},
+    max_episode_steps=200,
+)
+
+register(
+    'AntWindNonstationary-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.ant_wind_nonstationary:AntWindNonstationary',
+            'max_episode_steps': 200},
+    max_episode_steps=200,
+)
+
+register(
     'AntGoal-v0',
     entry_point='environments.wrappers:mujoco_wrapper',
     kwargs={'entry_point': 'environments.mujoco.ant_goal:AntGoalEnv',
@@ -41,7 +57,30 @@ register(
     'HalfCheetahVel-v0',
     entry_point='environments.wrappers:mujoco_wrapper',
     kwargs={'entry_point': 'environments.mujoco.half_cheetah_vel:HalfCheetahVelEnv',
-            'max_episode_steps': 200},
+            'max_episode_steps': 40},
+    max_episode_steps=40
+)
+
+register(
+    'HalfCheetahVelNonstationary-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.half_cheetah_vel_nonstationary:HalfCheetahVelEnvNonstationary',
+            'max_episode_steps':200},
+    max_episode_steps=200
+)
+
+# register(
+#     id="HalfCheetahWind-v0",
+#     entry_point="environments.mujoco.half_cheetah_wind_nonstationary:HalfCheetahWindEnv",
+#     max_episode_steps=1000,
+#     reward_threshold=4800.0, # reward_threshold (float) – Gym environment argument, the reward threshold before the task is considered solved
+# )
+
+register(
+    'HalfCheetahWindNonstationary-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.half_cheetah_wind_nonstationary:HalfCheetahWindNonstationary',
+            'max_episode_steps':200},
     max_episode_steps=200
 )
 
@@ -99,4 +138,10 @@ register(
     'GridNavi-v0',
     entry_point='environments.navigation.gridworld:GridNavi',
     kwargs={'num_cells': 5, 'num_steps': 15},
+)
+
+register(
+    'GridNaviNonStationary-v0',
+    entry_point='environments.navigation.gridworld_nonstationary:GridNaviNonStationary',
+    # kwargs={'num_cells': 5, 'num_steps': 15}, # comment this line to use the setting in gridworld_nonstationary.py
 )
