@@ -12,7 +12,7 @@ from torch.nn import functional as F
 
 from environments.parallel_envs import make_vec_envs
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 # def save_models(args, logger, policy, vae, envs, iter_idx):
@@ -172,7 +172,7 @@ def update_encoding(encoder, next_obs, action, reward, done, hidden_state, **kwa
         done = torch.zeros(size=(n_processes, 1),
                            dtype=torch.uint8, device=device)
     if 'r_t' in kwargs.keys():
-        reset_flag = torch.logical_or(done, kwargs['r_t']==0).float()
+        reset_flag = torch.logical_or(done, kwargs['r_t'] == 0).float()
         # 22_5_9 fixed a bug here, originally
         # reset_flag = done + (kwargs['r_t'] == 0)
         # when done == 1 and r_t == 0, reset flag will become 2

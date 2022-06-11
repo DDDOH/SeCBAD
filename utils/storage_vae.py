@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class RolloutStorageVAE(object):
@@ -36,7 +36,7 @@ class RolloutStorageVAE(object):
             self.next_state = torch.zeros(
                 (self.max_traj_len, self.max_buffer_size, state_dim))
             self.actions = torch.zeros(
-                (self.max_traj_len, self.max_buffer_size, action_dim))                
+                (self.max_traj_len, self.max_buffer_size, action_dim))
             self.rewards = torch.zeros(
                 (self.max_traj_len, self.max_buffer_size, 1))
             self.r_ts = torch.zeros(
@@ -64,12 +64,12 @@ class RolloutStorageVAE(object):
             (self.max_traj_len, num_processes, 1)).to(device)
         self.running_actions = torch.zeros(
             (self.max_traj_len, num_processes, action_dim)).to(device)
-        
+
         if task_dim is not None:
             self.running_tasks = torch.zeros(
                 (num_processes, task_dim)).to(device)
             self.running_nonstationary_tasks = torch.zeros(
-            (self.max_traj_len, num_processes, task_dim)).to(device)
+                (self.max_traj_len, num_processes, task_dim)).to(device)
         else:
             self.running_tasks = None
             self.running_nonstationary_tasks = None
@@ -130,10 +130,10 @@ class RolloutStorageVAE(object):
                                  self.num_processes] = self.running_rewards
                     if r_ts is not None:
                         self.r_ts[:, self.insert_idx:self.insert_idx +
-                                self.num_processes] = self.running_r_ts
+                                  self.num_processes] = self.running_r_ts
                     if (self.tasks is not None) and (self.running_tasks is not None):
                         self.nonstationary_tasks[:, self.insert_idx:self.insert_idx +
-                                             self.num_processes] = self.running_nonstationary_tasks
+                                                 self.num_processes] = self.running_nonstationary_tasks
                         insert_shape = self.tasks[self.insert_idx:
                                                   self.insert_idx+self.num_processes].shape
                         self.tasks[self.insert_idx:self.insert_idx +
@@ -199,7 +199,7 @@ class RolloutStorageVAE(object):
                                     'cpu')
                                 self.actions[:, self.insert_idx] = self.running_actions[:, i].to(
                                     'cpu')
-                                
+
                                 self.rewards[:, self.insert_idx] = self.running_rewards[:, i].to(
                                     'cpu')
                                 if r_ts is not None:
@@ -209,7 +209,7 @@ class RolloutStorageVAE(object):
                                     self.tasks[self.insert_idx] = self.running_tasks[i].to(
                                         'cpu')
                                     self.nonstationary_tasks[:, self.insert_idx] = self.running_nonstationary_tasks[:, i].to(
-                                    'cpu')
+                                        'cpu')
                                 self.trajectory_lens[self.insert_idx] = self.curr_timestep[i].clone(
                                 )
                                 self.insert_idx += 1
@@ -255,10 +255,12 @@ class RolloutStorageVAE(object):
             r_ts = None
         if self.tasks is not None:
             tasks = self.tasks[rollout_indices].to(device)
-            nonstationary_tasks = self.nonstationary_tasks[:, rollout_indices, :].to(device)
+            nonstationary_tasks = self.nonstationary_tasks[:, rollout_indices, :].to(
+                device)
         else:
             tasks = None
             nonstationary_tasks = None
 
         return prev_obs.to(device), next_obs.to(device), actions.to(device), \
-            rewards.to(device), tasks, trajectory_lens, r_ts, nonstationary_tasks
+            rewards.to(
+                device), tasks, trajectory_lens, r_ts, nonstationary_tasks

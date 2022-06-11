@@ -15,10 +15,11 @@ from utils import helpers as utl
 from utils.tb_logger import TBLogger
 from vae import VaribadVAE
 
+from scipy.stats import norm
 
 import progressbar
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 # TODO put this function into a more appropriate place
@@ -169,28 +170,85 @@ class AdaptiveLearner:
                 clip_param=self.args.ppo_clip_param,
                 optimiser_vae=self.vae.optimiser_vae,
             )
-        elif self.args.policy == 'adaptive_ppo':  # PPO for adaptive learning and meta learning is the same
-            policy = PPO(
-                self.args,
-                policy_net,
-                self.args.policy_value_loss_coef,
-                self.args.policy_entropy_coef,
-                policy_optimiser=self.args.policy_optimiser,
-                policy_anneal_lr=self.args.policy_anneal_lr,
-                train_steps=self.num_updates,
-                lr=self.args.lr_policy,
-                eps=self.args.policy_eps,
-                ppo_epoch=self.args.ppo_num_epochs,
-                num_mini_batch=self.args.ppo_num_minibatch,
-                use_huber_loss=self.args.ppo_use_huberloss,
-                use_clipped_value_loss=self.args.ppo_use_clipped_value_loss,
-                clip_param=self.args.ppo_clip_param,
-                optimiser_vae=self.vae.optimiser_vae,
-            )
+        # elif self.args.policy == 'adaptive_ppo':  # PPO for adaptive learning and meta learning is the same
+        #     policy = PPO(
+        #         self.args,
+        #         policy_net,
+        #         self.args.policy_value_loss_coef,
+        #         self.args.policy_entropy_coef,
+        #         policy_optimiser=self.args.policy_optimiser,
+        #         policy_anneal_lr=self.args.policy_anneal_lr,
+        #         train_steps=self.num_updates,
+        #         lr=self.args.lr_policy,
+        #         eps=self.args.policy_eps,
+        #         ppo_epoch=self.args.ppo_num_epochs,
+        #         num_mini_batch=self.args.ppo_num_minibatch,
+        #         use_huber_loss=self.args.ppo_use_huberloss,
+        #         use_clipped_value_loss=self.args.ppo_use_clipped_value_loss,
+        #         clip_param=self.args.ppo_clip_param,
+        #         optimiser_vae=self.vae.optimiser_vae,
+        #     )
         else:
             raise NotImplementedError
 
         return policy
+
+    def visualize(self):
+        
+
+        visualize_index = self.args.visualize_index
+        if visualize_index is None or (not os.path.exists(os.path.join(
+                self.args.model_dir, 'policy{}.pt'.format(visualize_index)))):
+            print('Incorrect visualize_index or None, use the lastest policy')
+            visualize_index = max([int(f[len('policy'):-len('.pt')]) for f in os.listdir(self.args.model_dir) if
+                            (f.startswith('policy')) and len(f)>len('policy')+len('.pt')])
+
+        if self.args.norm_rew_for_policy:
+            ret_rms = utl.load_obj(
+                self.args.model_dir, 'env_rew_rms{}'.format(visualize_index)) if self.args.norm_rew_for_policy else None
+
+        self.policy.actor_critic.load_state_dict(torch.load(os.path.join(
+            self.args.model_dir, 'policy{}.pt'.format(visualize_index)), map_location=device))
+
+        if self.policy.actor_critic.pass_state_to_policy and self.policy.actor_critic.norm_state:
+            self.policy.actor_critic.state_rms = utl.load_obj(
+                self.args.model_dir, "env_state_rms{}".format(visualize_index))
+        if self.policy.actor_critic.pass_latent_to_policy and self.policy.actor_critic.norm_latent:
+            self.policy.actor_critic.latent_rms = utl.load_obj(
+                self.args.model_dir, "env_latent_rms{}".format(visualize_index))
+        if self.policy.actor_critic.pass_belief_to_policy and self.policy.actor_critic.norm_belief:
+            self.policy.actor_critic.belief_rms = utl.load_obj(
+                self.args.model_dir, "env_belief_rms{}".format(visualize_index))
+        if self.policy.actor_critic.pass_task_to_policy and self.policy.actor_critic.norm_task:
+            self.policy.actor_critic.task_rms = utl.load_obj(
+                self.args.model_dir, "env_task_rms{}".format(visualize_index))
+
+        if self.args.decode_reward:
+            self.vae.reward_decoder.load_state_dict(torch.load(os.path.join(
+                self.args.model_dir, 'reward_decoder{}.pt'.format(visualize_index)), map_location=device))
+        if self.args.decode_state:
+            self.vae.state_decoder.load_state_dict(torch.load(os.path.join(
+                self.args.model_dir, 'state_decoder{}.pt'.format(visualize_index)), map_location=device))
+        if self.args.decode_task:
+            self.vae.task_decoder.load_state_dict(torch.load(os.path.join(
+                self.args.model_dir, 'task_decoder{}.pt'.format(visualize_index)), map_location=device))
+
+        returns = utl_eval.visualise_behaviour(args=self.args,
+                                               policy=self.policy,
+                                               image_folder=self.logger.full_output_folder,
+                                               iter_idx=visualize_index,
+                                               ret_rms=ret_rms,
+                                               encoder=self.vae.encoder,
+                                               reward_decoder=self.vae.reward_decoder,
+                                               state_decoder=self.vae.state_decoder,
+                                               task_decoder=self.vae.task_decoder,
+                                               compute_rew_reconstruction_loss=self.vae.compute_rew_reconstruction_loss,
+                                               compute_state_reconstruction_loss=self.vae.compute_state_reconstruction_loss,
+                                               compute_task_reconstruction_loss=self.vae.compute_task_reconstruction_loss,
+                                               compute_kl_loss=self.vae.compute_kl_loss,
+                                               tasks=self.train_tasks,
+                                               rendering=True
+                                               )
 
     def train(self):
         # TODO truncate at right place
@@ -254,6 +312,9 @@ class AdaptiveLearner:
                 r_t = torch.from_numpy(np.array([info['r_t'] for info in infos], dtype=int)).to(
                     device).float().view((-1, 1))  # r_t = 0 表示前一个循环 刚刚 reset 过 task
 
+                # if r_t[0][0] == 0:
+                # print('debug r_t: ', self.iter_idx, step)
+
                 done = torch.from_numpy(np.array(done, dtype=int)).to(
                     device).float().view((-1, 1))
                 # create mask for episode ends
@@ -292,6 +353,7 @@ class AdaptiveLearner:
 
                 # reset environments that are done
                 done_indices = np.argwhere(done.cpu().flatten()).flatten()
+                # print('step, done_indices:', step, done_indices)
                 if len(done_indices) > 0:
                     next_state, belief, task, _ = utl.reset_env(self.envs, self.args,
                                                                 indices=done_indices, state=next_state)
@@ -319,9 +381,9 @@ class AdaptiveLearner:
                         latent_mean=latent_mean,
                         latent_logvar=latent_logvar,
                         ctrl_reward=torch.FloatTensor(
-                        [info['ctrl_reward'] for info in infos]).unsqueeze(0).T.to(device),
+                            [info['ctrl_reward'] for info in infos]).unsqueeze(0).T.to(device),
                         vel_reward=torch.FloatTensor(
-                        [info['vel_cost'] for info in infos]).unsqueeze(0).T.to(device)
+                            [info['vel_cost'] for info in infos]).unsqueeze(0).T.to(device)
                     )
 
                 else:
@@ -403,7 +465,7 @@ class AdaptiveLearner:
         latent_sample = (torch.stack(
             [all_latent_samples[lens[i]][i] for i in range(len(lens))])).to(device)
         latent_mean = (torch.stack([all_latent_means[lens[i]][i]
-                       for i in range(len(lens))])).to(device)
+                                   for i in range(len(lens))])).to(device)
         latent_logvar = (torch.stack(
             [all_latent_logvars[lens[i]][i] for i in range(len(lens))])).to(device)
         hidden_state = (torch.stack(
@@ -468,21 +530,21 @@ class AdaptiveLearner:
 
         if (self.iter_idx + 1) % self.args.vis_interval == 0:
             ret_rms = self.envs.venv.ret_rms if self.args.norm_rew_for_policy else None
-            returns_per_episode = utl_eval.visualise_behaviour(args=self.args,
-                                                               policy=self.policy,
-                                                               image_folder=self.logger.full_output_folder,
-                                                               iter_idx=self.iter_idx,
-                                                               ret_rms=ret_rms,
-                                                               encoder=self.vae.encoder,
-                                                               reward_decoder=self.vae.reward_decoder,
-                                                               state_decoder=self.vae.state_decoder,
-                                                               task_decoder=self.vae.task_decoder,
-                                                               compute_rew_reconstruction_loss=self.vae.compute_rew_reconstruction_loss,
-                                                               compute_state_reconstruction_loss=self.vae.compute_state_reconstruction_loss,
-                                                               compute_task_reconstruction_loss=self.vae.compute_task_reconstruction_loss,
-                                                               compute_kl_loss=self.vae.compute_kl_loss,
-                                                               tasks=self.train_tasks,
-                                                               )
+            returns = utl_eval.visualise_behaviour(args=self.args,
+                                                   policy=self.policy,
+                                                   image_folder=self.logger.full_output_folder,
+                                                   iter_idx=self.iter_idx,
+                                                   ret_rms=ret_rms,
+                                                   encoder=self.vae.encoder,
+                                                   reward_decoder=self.vae.reward_decoder,
+                                                   state_decoder=self.vae.state_decoder,
+                                                   task_decoder=self.vae.task_decoder,
+                                                   compute_rew_reconstruction_loss=self.vae.compute_rew_reconstruction_loss,
+                                                   compute_state_reconstruction_loss=self.vae.compute_state_reconstruction_loss,
+                                                   compute_task_reconstruction_loss=self.vae.compute_task_reconstruction_loss,
+                                                   compute_kl_loss=self.vae.compute_kl_loss,
+                                                   tasks=self.train_tasks,
+                                                   )
 
         # --- evaluate policy ----
 
@@ -499,23 +561,30 @@ class AdaptiveLearner:
 
             # log the return avg/std across tasks (=processes)
 
-            returns_per_episode = torch.cat(returns_per_episode, dim=1)
-            returns_avg = returns_per_episode.mean(dim=0)
-            returns_std = returns_per_episode.std(dim=0)
-            for k in range(len(returns_avg)):
-                self.logger.add(
-                    'return_avg_per_iter__episode_{}'.format(k + 1), returns_avg[k], self.iter_idx)
-                self.logger.add(
-                    'return_avg_per_frame__episode_{}'.format(k + 1), returns_avg[k], self.frames)
-                self.logger.add(
-                    'return_std_per_iter__episode_{}'.format(k + 1), returns_std[k], self.iter_idx)
-                self.logger.add(
-                    'return_std_per_frame__episode_{}'.format(k + 1), returns_std[k], self.frames)
+            returns = torch.tensor(returns)
+            returns_avg = returns.mean(dim=0)
+            returns_std = returns.std(dim=0)
+            # for k in range(len(returns_avg)):
+            #     self.logger.add(
+            #         'return_avg_per_iter__episode_{}'.format(k + 1), returns_avg[k], self.iter_idx)
+            #     self.logger.add(
+            #         'return_avg_per_frame__episode_{}'.format(k + 1), returns_avg[k], self.frames)
+            #     self.logger.add(
+            #         'return_std_per_iter__episode_{}'.format(k + 1), returns_std[k], self.iter_idx)
+            #     self.logger.add(
+            #         'return_std_per_frame__episode_{}'.format(k + 1), returns_std[k], self.frames)
 
+            self.logger.add(
+                'return_avg_per_iter', returns_avg, self.iter_idx)
+            self.logger.add(
+                'return_avg_per_frame', returns_avg, self.frames)
+            self.logger.add(
+                'return_std_per_iter', returns_std, self.iter_idx)
+            self.logger.add('return_std_per_frame', returns_std, self.frames)
             print(f"Updates {self.iter_idx}, "
                   f"Frames {self.frames}, "
                   f"FPS {int(self.frames / (time.time() - start_time))}, "
-                  f"\n Mean return (evaluate): {returns_avg[-1].item()} \n"
+                  f"\n Mean return (evaluate): {returns_avg.item()} \n"
                   )
 
         # --- save models ---
@@ -530,30 +599,37 @@ class AdaptiveLearner:
                 idx_labels.append(int(self.iter_idx))
 
             for idx_label in idx_labels:
-
-                torch.save(self.policy.actor_critic, os.path.join(
+                # DONE save state_dict instead https://pytorch.org/tutorials/beginner/saving_loading_models.html#saving-loading-model-for-inference
+                torch.save(self.policy.actor_critic.state_dict(), os.path.join(
                     save_path, f"policy{idx_label}.pt"))
-                torch.save(self.vae.encoder, os.path.join(
+                torch.save(self.vae.encoder.state_dict(), os.path.join(
                     save_path, f"encoder{idx_label}.pt"))
                 if self.vae.state_decoder is not None:
-                    torch.save(self.vae.state_decoder, os.path.join(
+                    torch.save(self.vae.state_decoder.state_dict(), os.path.join(
                         save_path, f"state_decoder{idx_label}.pt"))
                 if self.vae.reward_decoder is not None:
-                    torch.save(self.vae.reward_decoder, os.path.join(
+                    torch.save(self.vae.reward_decoder.state_dict(), os.path.join(
                         save_path, f"reward_decoder{idx_label}.pt"))
                 if self.vae.task_decoder is not None:
-                    torch.save(self.vae.task_decoder, os.path.join(
+                    torch.save(self.vae.task_decoder.state_dict(), os.path.join(
                         save_path, f"task_decoder{idx_label}.pt"))
 
                 # save normalisation params of envs
                 if self.args.norm_rew_for_policy:
-                    rew_rms = self.envs.venv.ret_rms
-                    utl.save_obj(rew_rms, save_path, f"env_rew_rms{idx_label}")
-                # TODO: grab from policy and save?
-                # if self.args.norm_obs_for_policy:
-                #     obs_rms = self.envs.venv.obs_rms
-                #     utl.save_obj(obs_rms, save_path, f"env_obs_rms{idx_label}")
-
+                    utl.save_obj(self.envs.venv.ret_rms, save_path,
+                                 f"env_rew_rms{idx_label}")
+                if self.policy.actor_critic.pass_state_to_policy and self.policy.actor_critic.norm_state:
+                    utl.save_obj(self.policy.actor_critic.state_rms,
+                                 save_path, f"env_state_rms{idx_label}")
+                if self.policy.actor_critic.pass_latent_to_policy and self.policy.actor_critic.norm_latent:
+                    utl.save_obj(self.policy.actor_critic.latent_rms,
+                                 save_path, f"env_latent_rms{idx_label}")
+                if self.policy.actor_critic.pass_belief_to_policy and self.policy.actor_critic.norm_belief:
+                    utl.save_obj(self.policy.actor_critic.belief_rms,
+                                 save_path, f"env_belief_rms{idx_label}")
+                if self.policy.actor_critic.pass_task_to_policy and self.policy.actor_critic.norm_task:
+                    utl.save_obj(self.policy.actor_critic.task_rms,
+                                 save_path, f"env_task_rms{idx_label}")
         # --- log some other things ---
 
         if ((self.iter_idx + 1) % self.args.log_interval == 0) and (train_stats is not None):
@@ -625,3 +701,162 @@ class AdaptiveLearner:
                             [param_list[i].grad.cpu().numpy().mean() for i in range(len(param_list))])
                         self.logger.add('gradients__{}'.format(name),
                                         param_grad_mean, self.iter_idx)
+
+    def load_model(self):
+        self.policy.actor_critic = torch.load(
+            os.path.join(self.args.model_path), 'policy.pt')
+        self.vae.encoder = torch.load(
+            os.path.join(self.args.model_path), 'encoder.pt')
+        if self.vae.state_decoder is not None:
+            self.vae.state_decoder = torch.load(
+                os.path.join(self.args.model_path), 'state_decoder.pt')
+        if self.vae.reward_decoder is not None:
+            self.vae.reward_decoder = torch.load(
+                os.path.join(self.args.model_path), 'reward_decoder.pt')
+        if self.vae.task_decoder is not None:
+            self.vae.task_decoder = torch.load(
+                os.path.join(self.args.model_path), 'task_decoder.pt')
+
+    @ staticmethod
+    def inference(hidden_rec, prev_state, action, state, rew, step_idx, reward_decoder, state_decoder, p_G, p_G_t_dist):
+        # 5_23 compute the best reset point for all the non-stationary envs using sacbad algorithm
+
+        # when step_idx == 4, we have done the 4-th env step
+        # for the 5-th env step,
+        # we may use zero hidden_state (reset after 4 up to 4) (after 4-rd env step, the task switch to a new one)
+        # or latent & hidden_state reset after step 3 up to step 4
+        # or latent & hidden_state reset after step 2 up to step 4
+        # or latent & hidden_state reset after step 1 up to step 4
+        # or latent & hidden_state reset after step 0 up to step 4
+
+        # select one of the above case, use that as the hidden_state to take action in 5-th env step
+
+        # 旧的code相当于始终用 best_reset_after = 0
+        # the high in randint is exclusive
+
+        # choose using Bayesian inference
+        hidden_rec.encoder_step(action, state, rew)
+
+        g_G_t_dist = {}
+        # step_idx is still 4
+        for reset_after in range(step_idx):
+            # reset after in 0,1,2,3
+            # i = 5,4,3,2
+            # k = 4,3,2,1
+
+            i = step_idx + 1 - reset_after
+            k = step_idx - reset_after
+
+            # i in 5, 4, 3, 2
+
+            if (reset_after == 1) and (step_idx == 4):
+                a = 1
+
+            # assume reset_after is 1
+            # second term:
+
+            # get latent & hidden reset after 1 up to 4: second_term_before_cond
+            # and latent & hidden reset after 1 up to 3: second_term_after_cond
+            # and latent & hidden reset after 1 up to 2: second_term_after_cond
+            # (and latent & hidden reset after 1 up to 1?)
+
+            # print('before cond: reset_after {} up tp {}'.format(
+            #     reset_after, step_idx))
+            # print('after cond: reset_after {} up tp {}'.format(
+            #     reset_after, [j for j in range(reset_after, step_idx)]))
+            # print('i = {}'.format(i))
+
+            # second term is E_{ q(c|tau_{t-k:t-1}) } [ p(s_t, r_t-1 | s_t-1, a_t-1, c) ]
+
+            # get q(c|tau_{t-k:t-1})
+            # 5_17 check with xiaoyu
+            latent_samples, latent_mean, latent_logvar = hidden_rec.get_record(
+                reset_after=reset_after, up_to=step_idx, label='latent')
+
+            # 5_17 double check the code
+            reward_mean = reward_decoder(
+                latent_state=latent_samples, next_state=state, prev_state=prev_state, actions=action)
+            if state_decoder is not None:
+                state_mean = state_decoder(
+                    latent_state=latent_samples, state=prev_state, actions=action)
+
+            second_term = norm.pdf(
+                rew.cpu().item(), loc=reward_mean.item(), scale=1)
+            if state_decoder is not None:
+                second_term *= np.prod(norm.pdf(state.squeeze(0).cpu(),
+                                       loc=state_mean.squeeze(0).cpu(), scale=1))
+
+            # second_term_before_cond = hidden_rec.get_record(
+            #     reset_after=reset_after, up_to=step_idx, label='latent')
+
+            # second_term_after_cond = [hidden_rec.get_record(
+            #     reset_after=reset_after, up_to=j, label='latent') for j in range(reset_after, step_idx)]  # python range(inclusive, exclusive)
+
+            # second_term = get_2nd_term(
+            #     second_term_before_cond, second_term_after_cond)
+
+            third_term = p_G(G_t=i, G_t_minus_1=i-1)
+            g_G_t_dist[i] = p_G_t_dist[i-1] * \
+                second_term * third_term
+
+            # G_t_dist[i] = P_t_minus_1_dist[i - 1] *
+
+        # reset_after = 4
+        # i = 1
+        # k = 0
+
+        g_G_t_dist[1] = 0  # 5_24
+        for k in range(1, step_idx+1):
+            # g_G_t_dist[1] += p_G_t_dist[k] * \
+            #     get_2nd_term_i_1(hidden_rec.get_record(
+            #         reset_after=step_idx, up_to=step_idx, label='latent')) * p_G(G_t=1, G_t_minus_1=k)
+
+            latent_samples, latent_mean, latent_logvar = hidden_rec.get_record(
+                reset_after=step_idx, up_to=step_idx, label='latent')
+
+            reward_mean = reward_decoder(
+                latent_state=latent_samples, next_state=state, prev_state=prev_state, actions=action)
+            if state_decoder is not None:
+                state_mean = state_decoder(
+                    latent_state=latent_samples, state=prev_state, actions=action)
+
+            second_term = norm.pdf(
+                rew.cpu().item(), loc=reward_mean.item(), scale=1)
+            if state_decoder is not None:
+                second_term *= np.prod(norm.pdf(state.squeeze(0).cpu(),
+                                       loc=state_mean.squeeze(0).cpu(), scale=1))
+
+            g_G_t_dist[1] += p_G_t_dist[k] * \
+                second_term * p_G(G_t=1, G_t_minus_1=k)
+
+        # get sum of g_G_t_dist
+        sum_g_G_t = sum(g_G_t_dist.values())
+        # divide each value of g_G_t_dist by sum_g_G_t
+        # use for next iteration
+        # print(sum_g_G_t)
+        p_G_t_dist = {k: v / sum_g_G_t for k,
+                      v in g_G_t_dist.items()}
+
+        best_unchange_length = max(g_G_t_dist, key=g_G_t_dist.get)
+        best_reset_after = step_idx + 1 - best_unchange_length
+
+        # best_unchange_length_rec.append(best_unchange_length)
+
+        curr_latent_sample, curr_latent_mean, curr_latent_logvar = hidden_rec.get_record(
+            reset_after=best_reset_after, up_to=step_idx, label='latent')
+
+        # print('reset_after: {}, up_to: {}'.format(best_reset_after, step_idx))
+
+        assert curr_latent_sample.dim() == 2
+        assert curr_latent_mean.dim() == 2
+        assert curr_latent_logvar.dim() == 2
+
+        return curr_latent_sample.clone(), curr_latent_mean.clone(), curr_latent_logvar.clone(), best_unchange_length, p_G_t_dist
+
+        # episode_latent_samples[episode_idx].append(
+        #     curr_latent_sample[0].clone())
+        # episode_latent_means[episode_idx].append(
+        #     curr_latent_mean[0].clone())
+        # episode_latent_logvars[episode_idx].append(
+        #     curr_latent_logvar[0].clone())
+        # raise NotImplemented

@@ -1,3 +1,5 @@
+from scipy.stats import norm
+import progressbar
 import numpy as np
 from gym import utils
 from gym.envs.mujoco import mujoco_env
@@ -6,17 +8,14 @@ import matplotlib.pyplot as plt
 import torch
 from utils import helpers as utl
 from utils.hidden_recoder import HiddenRecoder
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-import progressbar
-
-from scipy.stats import norm
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
     def __init__(self, ctx_in_state=False, normalize_ctx=True,  max_episode_steps=200):
         self.set_base_task(self.sample_tasks(1)[0])
         self._max_episode_steps = max_episode_steps
-        self.task_dim = 1 # only consider wind on align to the direction of the robot
+        self.task_dim = 1  # only consider wind on align to the direction of the robot
 
         self.curr_step = 0
         self.r_t = 0  # how many steps since last task change
@@ -27,10 +26,10 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
         self.ctx_multiplier = 1 / 1000
         if torch.cuda.device_count() == 4:
             mujoco_env.MujocoEnv.__init__(
-                            self, "/home/yufeng/Latent_Adaptive_RL/22_5_3_VariBAD/environments/mujoco/assets/half_cheetah_wind.xml", 5)
+                self, "/home/yufeng/Latent_Adaptive_RL/22_5_3_VariBAD/environments/mujoco/assets/half_cheetah_wind.xml", 5)
         elif torch.cuda.device_count() == 1:
             mujoco_env.MujocoEnv.__init__(
-                            self, "/home/v-yuzheng/Latent_Adaptive_RL/22_5_3_VariBAD/environments/mujoco/assets/half_cheetah_wind.xml", 5)
+                self, "/home/v-yuzheng/Latent_Adaptive_RL/22_5_3_VariBAD/environments/mujoco/assets/half_cheetah_wind.xml", 5)
         else:
             mujoco_env.MujocoEnv.__init__(
                 self, "/Users/hector/Desktop/Latent_Adaptive_RL/22_5_3_VariBAD/environments/mujoco/assets/half_cheetah_wind.xml", 5)
@@ -41,7 +40,7 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
         # wind: real(3), “0 0 0”
         # Velocity vector of the medium (i.e., wind).
         # This vector is subtracted from the 3D translational velocity of each body, and the result is used to compute viscous,
-        # lift and drag forces acting on the body; recall Passive forces in the Computation chapter. 
+        # lift and drag forces acting on the body; recall Passive forces in the Computation chapter.
         # The magnitude of these forces scales with the values of density.
 
         # density: real, “0”
@@ -56,7 +55,6 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
         self.obs_dim = self.observation_space.shape[0]
         self.act_dim = self.action_space.shape[0]
 
-
     def set_base_task(self, base_task):
         # set base task
         if isinstance(base_task, np.ndarray):
@@ -70,7 +68,7 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
         self.change_interval = max(
             int(np.random.normal(self.change_interval_base, 10)), 10)
         self.has_change_interval = True
-        
+
     def step(self, action):
         # self.step_curr_task += 1
         # self.step_count += 1
@@ -95,12 +93,12 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
         reward = reward_ctrl + reward_run
         done = False
         infos = dict(reward_forward=reward_run,
-                    reward_ctrl=reward_ctrl,
-                    curr_task=self.model.opt.wind[0],
-                    curr_step=self.curr_step,
-                    r_t=self.r_t,
-                    curr_velocity=reward_run
-        )
+                     reward_ctrl=reward_ctrl,
+                     curr_task=self.model.opt.wind[0],
+                     curr_step=self.curr_step,
+                     r_t=self.r_t,
+                     curr_velocity=reward_run
+                     )
         return ob, reward, done, infos
 
     def _get_obs(self):
@@ -157,7 +155,6 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                             **kwargs,
                             ):
 
-
         if args.learner_type == 'adaptive':
 
             num_episodes = args.max_rollouts_per_task
@@ -208,7 +205,6 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                     # G_t = 1, G_t_minus_1 = k
                     return 1/unwrapped_env.change_interval_base
 
-
             for episode_idx in range(num_episodes):
 
                 hidden_rec = HiddenRecoder(encoder)
@@ -228,9 +224,11 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                         curr_latent_sample, curr_latent_mean, curr_latent_logvar = hidden_rec.encoder_init(
                             0)
                         if curr_latent_sample.dim() == 3:
-                            curr_latent_sample = curr_latent_sample[0].to(device)
+                            curr_latent_sample = curr_latent_sample[0].to(
+                                device)
                             curr_latent_mean = curr_latent_mean[0].to(device)
-                            curr_latent_logvar = curr_latent_logvar[0].to(device)
+                            curr_latent_logvar = curr_latent_logvar[0].to(
+                                device)
                         else:
                             curr_latent_sample = curr_latent_sample.to(device)
                             curr_latent_mean = curr_latent_mean.to(device)
@@ -250,14 +248,15 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                 # for step_idx in range(1, env._max_episode_steps + 1):
                 for step_idx in progressbar.progressbar(range(1, env._max_episode_steps + 1), redirect_stdout=True):
                     if step_idx == 1:
-                        episode_prev_obs[episode_idx].append(start_state.clone())
+                        episode_prev_obs[episode_idx].append(
+                            start_state.clone())
                     else:
                         episode_prev_obs[episode_idx].append(state.clone())
                     # act
                     latent = utl.get_latent_for_policy(args,
-                                                    latent_sample=curr_latent_sample,
-                                                    latent_mean=curr_latent_mean,
-                                                    latent_logvar=curr_latent_logvar)
+                                                       latent_sample=curr_latent_sample,
+                                                       latent_mean=curr_latent_mean,
+                                                       latent_logvar=curr_latent_logvar)
                     _, action = policy.act(
                         state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
 
@@ -340,8 +339,10 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                             state_mean = kwargs['state_decoder'](
                                 latent_state=latent_samples, state=episode_prev_obs[episode_idx][-1], actions=action)
 
-                            second_term = norm.pdf(rew.cpu().item(), loc=reward_mean.item(), scale=1)
-                            second_term *= np.prod(norm.pdf(state.squeeze(0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
+                            second_term = norm.pdf(
+                                rew.cpu().item(), loc=reward_mean.item(), scale=1)
+                            second_term *= np.prod(norm.pdf(state.squeeze(
+                                0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
 
                             # second_term_before_cond = hidden_rec.get_record(
                             #     reset_after=reset_after, up_to=step_idx, label='latent')
@@ -369,27 +370,30 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                             #         reset_after=step_idx, up_to=step_idx, label='latent')) * p_G(G_t=1, G_t_minus_1=k)
 
                             latent_samples, latent_mean, latent_logvar = hidden_rec.get_record(
-                                    reset_after=step_idx, up_to=step_idx, label='latent')
+                                reset_after=step_idx, up_to=step_idx, label='latent')
 
                             reward_mean = kwargs['reward_decoder'](
                                 latent_state=latent_samples, next_state=state, prev_state=episode_prev_obs[episode_idx][-1], actions=action)
                             state_mean = kwargs['state_decoder'](
                                 latent_state=latent_samples, state=episode_prev_obs[episode_idx][-1], actions=action)
 
-                            second_term = norm.pdf(rew.cpu().item(), loc=reward_mean.item(), scale=1)
-                            second_term *= np.prod(norm.pdf(state.squeeze(0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
+                            second_term = norm.pdf(
+                                rew.cpu().item(), loc=reward_mean.item(), scale=1)
+                            second_term *= np.prod(norm.pdf(state.squeeze(
+                                0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
 
-                            g_G_t_dist[1] += p_G_t_dist[k] * second_term * p_G(G_t=1, G_t_minus_1=k)
-
+                            g_G_t_dist[1] += p_G_t_dist[k] * \
+                                second_term * p_G(G_t=1, G_t_minus_1=k)
 
                         # get sum of g_G_t_dist
                         sum_g_G_t = sum(g_G_t_dist.values())
                         # divide each value of g_G_t_dist by sum_g_G_t
                         # use for next iteration
                         p_G_t_dist = {k: v / sum_g_G_t for k,
-                                    v in g_G_t_dist.items()}
+                                      v in g_G_t_dist.items()}
 
-                        best_unchange_length = max(g_G_t_dist, key=g_G_t_dist.get)
+                        best_unchange_length = max(
+                            g_G_t_dist, key=g_G_t_dist.get)
                         best_reset_after = step_idx + 1 - best_unchange_length
                         best_unchange_length_rec.append(best_unchange_length)
 
@@ -425,7 +429,8 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                         start_state = info[0]['start_state']
                         start_state = torch.from_numpy(
                             start_state).reshape((1, -1)).float().to(device)
-                        start_pos = unwrapped_env.get_body_com("torso")[0].copy()
+                        start_pos = unwrapped_env.get_body_com("torso")[
+                            0].copy()
                         break
 
                 episode_returns.append(sum(curr_rollout_rew))
@@ -463,20 +468,16 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                 plt.xlim(min_x - 0.05 * span, max_x + 0.05 * span)
                 plt.plot([0, 0], [200, 200], 'b--', alpha=0.2)
 
-
-
                 # velocity & wind_speed (task)
                 plt.subplot(num_episodes, 4, i + 1 + num_episodes)
                 plt.plot(velocity_rec[i], range(len(velocity_rec[i])), 'k')
                 if i == num_episodes - 1:
                     plt.xlabel('velocity', fontsize=15)
 
-
                 plt.subplot(num_episodes, 4, i + 2 + num_episodes)
                 plt.plot(episode_tasks[i], range(len(episode_tasks[i])), 'r')
                 if i == num_episodes - 1:
                     plt.xlabel('wind_speed', fontsize=15)
-                
 
                 # unchanged length
                 plt.subplot(num_episodes, 4, i + 3 + num_episodes)
@@ -545,8 +546,6 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
             pos = [[] for _ in range(args.max_rollouts_per_task)]
             start_pos = unwrapped_env.get_body_com("torso")[0].copy()
 
-            
-
             for episode_idx in range(num_episodes):
 
                 curr_rollout_rew = []
@@ -558,28 +557,35 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                 if encoder is not None:
                     if episode_idx == 0:
                         # reset to prior
-                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(1)
+                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(
+                            1)
                         curr_latent_sample = curr_latent_sample[0].to(device)
                         curr_latent_mean = curr_latent_mean[0].to(device)
                         curr_latent_logvar = curr_latent_logvar[0].to(device)
-                    episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                    episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                    episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                    episode_latent_samples[episode_idx].append(
+                        curr_latent_sample[0].clone())
+                    episode_latent_means[episode_idx].append(
+                        curr_latent_mean[0].clone())
+                    episode_latent_logvars[episode_idx].append(
+                        curr_latent_logvar[0].clone())
 
                 for step_idx in range(1, env._max_episode_steps + 1):
 
                     if step_idx == 1:
-                        episode_prev_obs[episode_idx].append(start_state.clone())
+                        episode_prev_obs[episode_idx].append(
+                            start_state.clone())
                     else:
                         episode_prev_obs[episode_idx].append(state.clone())
                     # act
                     latent = utl.get_latent_for_policy(args,
-                                                    latent_sample=curr_latent_sample,
-                                                    latent_mean=curr_latent_mean,
-                                                    latent_logvar=curr_latent_logvar)
-                    _, action = policy.act(state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
+                                                       latent_sample=curr_latent_sample,
+                                                       latent_mean=curr_latent_mean,
+                                                       latent_logvar=curr_latent_logvar)
+                    _, action = policy.act(
+                        state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
 
-                    (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(env, action, args)
+                    (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(
+                        env, action, args)
                     state = state.reshape((1, -1)).float().to(device)
 
                     # infos will not passed to agent
@@ -587,26 +593,34 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                     velocity_rec[-1].append(info[0]['curr_velocity'])
 
                     # keep track of position
-                    pos[episode_idx].append(unwrapped_env.get_body_com("torso")[0].copy())
+                    pos[episode_idx].append(
+                        unwrapped_env.get_body_com("torso")[0].copy())
 
                     if encoder is not None:
                         # update task embedding
                         curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
-                            action.reshape(1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
+                            action.reshape(
+                                1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
                             hidden_state, return_prior=False)
 
-                        episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                        episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                        episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                        episode_latent_samples[episode_idx].append(
+                            curr_latent_sample[0].clone())
+                        episode_latent_means[episode_idx].append(
+                            curr_latent_mean[0].clone())
+                        episode_latent_logvars[episode_idx].append(
+                            curr_latent_logvar[0].clone())
 
                     episode_next_obs[episode_idx].append(state.clone())
                     episode_rewards[episode_idx].append(rew.clone())
-                    episode_actions[episode_idx].append(action.reshape(1, -1).clone())
+                    episode_actions[episode_idx].append(
+                        action.reshape(1, -1).clone())
 
                     if info[0]['done_mdp'] and not done:
                         start_state = info[0]['start_state']
-                        start_state = torch.from_numpy(start_state).reshape((1, -1)).float().to(device)
-                        start_pos = unwrapped_env.get_body_com("torso")[0].copy()
+                        start_state = torch.from_numpy(
+                            start_state).reshape((1, -1)).float().to(device)
+                        start_pos = unwrapped_env.get_body_com("torso")[
+                            0].copy()
                         break
 
                 episode_returns.append(sum(curr_rollout_rew))
@@ -614,8 +628,10 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
 
             # clean up
             if encoder is not None:
-                episode_latent_means = [torch.stack(e) for e in episode_latent_means]
-                episode_latent_logvars = [torch.stack(e) for e in episode_latent_logvars]
+                episode_latent_means = [torch.stack(
+                    e) for e in episode_latent_means]
+                episode_latent_logvars = [torch.stack(
+                    e) for e in episode_latent_logvars]
 
             episode_prev_obs = [torch.cat(e) for e in episode_prev_obs]
             episode_next_obs = [torch.cat(e) for e in episode_next_obs]
@@ -642,22 +658,18 @@ class HalfCheetahWindNonstationary(mujoco_env.MujocoEnv, utils.EzPickle):
                 plt.xlim(min_x - 0.05 * span, max_x + 0.05 * span)
                 plt.plot([0, 0], [200, 200], 'b--', alpha=0.2)
 
-
-
                 # velocity
                 plt.subplot(num_episodes, 3, i + 1 + num_episodes)
                 plt.plot(velocity_rec[i], range(len(velocity_rec[i])), 'k')
-                
+
                 if i == num_episodes - 1:
                     plt.xlabel('velocity', fontsize=15)
-
 
                 # wind_speed (task)
                 plt.subplot(num_episodes, 3, i + 2 + num_episodes)
                 plt.plot(episode_tasks[i], range(len(episode_tasks[i])), 'r')
                 if i == num_episodes - 1:
                     plt.xlabel('wind_speed', fontsize=15)
-
 
             plt.tight_layout()
             if image_folder is not None:

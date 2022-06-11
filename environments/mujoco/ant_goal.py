@@ -16,7 +16,8 @@ class AntGoalEnv(AntEnv):
         self.do_simulation(action, self.frame_skip)
         xposafter = np.array(self.get_body_com("torso"))
 
-        goal_reward = -np.sum(np.abs(xposafter[:2] - self.goal_pos))  # make it happy, not suicidal
+        # make it happy, not suicidal
+        goal_reward = -np.sum(np.abs(xposafter[:2] - self.goal_pos))
 
         ctrl_cost = .1 * np.square(action).sum()
         contact_cost = 0.5 * 1e-3 * np.sum(

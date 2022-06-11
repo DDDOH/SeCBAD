@@ -19,7 +19,7 @@ from vae import VaribadVAE
 
 import progressbar
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class MetaLearner:
@@ -42,12 +42,6 @@ class MetaLearner:
         self.logger = TBLogger(self.args, self.args.exp_label)
 
         # initialise environments
-        # self.envs = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
-        #                           gamma=args.policy_gamma, device=device,
-        #                           episodes_per_task=self.args.max_rollouts_per_task,
-        #                           normalise_rew=args.norm_rew_for_policy, ret_rms=None,
-        #                           tasks=None
-        #                           )
 
         self.envs = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
                                   gamma=args.policy_gamma, device=device,
@@ -395,21 +389,21 @@ class MetaLearner:
 
         if (self.iter_idx + 1) % self.args.vis_interval == 0:
             ret_rms = self.envs.venv.ret_rms if self.args.norm_rew_for_policy else None
-            returns_per_episode = utl_eval.visualise_behaviour(args=self.args,
-                                         policy=self.policy,
-                                         image_folder=self.logger.full_output_folder,
-                                         iter_idx=self.iter_idx,
-                                         ret_rms=ret_rms,
-                                         encoder=self.vae.encoder,
-                                         reward_decoder=self.vae.reward_decoder,
-                                         state_decoder=self.vae.state_decoder,
-                                         task_decoder=self.vae.task_decoder,
-                                         compute_rew_reconstruction_loss=self.vae.compute_rew_reconstruction_loss,
-                                         compute_state_reconstruction_loss=self.vae.compute_state_reconstruction_loss,
-                                         compute_task_reconstruction_loss=self.vae.compute_task_reconstruction_loss,
-                                         compute_kl_loss=self.vae.compute_kl_loss,
-                                         tasks=self.train_tasks,
-                                         )
+            returns = utl_eval.visualise_behaviour(args=self.args,
+                                                   policy=self.policy,
+                                                   image_folder=self.logger.full_output_folder,
+                                                   iter_idx=self.iter_idx,
+                                                   ret_rms=ret_rms,
+                                                   encoder=self.vae.encoder,
+                                                   reward_decoder=self.vae.reward_decoder,
+                                                   state_decoder=self.vae.state_decoder,
+                                                   task_decoder=self.vae.task_decoder,
+                                                   compute_rew_reconstruction_loss=self.vae.compute_rew_reconstruction_loss,
+                                                   compute_state_reconstruction_loss=self.vae.compute_state_reconstruction_loss,
+                                                   compute_task_reconstruction_loss=self.vae.compute_task_reconstruction_loss,
+                                                   compute_kl_loss=self.vae.compute_kl_loss,
+                                                   tasks=self.train_tasks,
+                                                   )
 
         # --- evaluate policy ----
 
@@ -426,23 +420,30 @@ class MetaLearner:
 
             # log the return avg/std across tasks (=processes)
 
-            returns_per_episode = torch.cat(returns_per_episode, dim=1)
-            returns_avg = returns_per_episode.mean(dim=0)
-            returns_std = returns_per_episode.std(dim=0)
-            for k in range(len(returns_avg)):
-                self.logger.add(
-                    'return_avg_per_iter__episode_{}'.format(k + 1), returns_avg[k], self.iter_idx)
-                self.logger.add(
-                    'return_avg_per_frame__episode_{}'.format(k + 1), returns_avg[k], self.frames)
-                self.logger.add(
-                    'return_std_per_iter__episode_{}'.format(k + 1), returns_std[k], self.iter_idx)
-                self.logger.add(
-                    'return_std_per_frame__episode_{}'.format(k + 1), returns_std[k], self.frames)
+            returns = torch.tensor(returns)
+            returns_avg = returns.mean(dim=0)
+            returns_std = returns.std(dim=0)
+            # for k in range(len(returns_avg)):
+            # self.logger.add(
+            #     'return_avg_per_iter__episode_{}'.format(k + 1), returns_avg[k], self.iter_idx)
+            # self.logger.add(
+            #     'return_avg_per_frame__episode_{}'.format(k + 1), returns_avg[k], self.frames)
+            # self.logger.add(
+            #     'return_std_per_iter__episode_{}'.format(k + 1), returns_std[k], self.iter_idx)
+            # self.logger.add(
+            #     'return_std_per_frame__episode_{}'.format(k + 1), returns_std[k], self.frames)
 
+            self.logger.add(
+                'return_avg_per_iter', returns_avg, self.iter_idx)
+            self.logger.add(
+                'return_avg_per_frame', returns_avg, self.frames)
+            self.logger.add(
+                'return_std_per_iter', returns_std, self.iter_idx)
+            self.logger.add('return_std_per_frame', returns_std, self.frames)
             print(f"Updates {self.iter_idx}, "
                   f"Frames {self.frames}, "
                   f"FPS {int(self.frames / (time.time() - start_time))}, "
-                  f"\n Mean return (evaluate): {returns_avg[-1].item()} \n"
+                  f"\n Mean return (evaluate): {returns_avg.item()} \n"
                   )
 
         # --- save models ---

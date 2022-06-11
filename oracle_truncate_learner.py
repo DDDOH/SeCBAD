@@ -18,15 +18,7 @@ from vae import VaribadVAE
 
 import progressbar
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
-# TODO put this function into a more appropriate place
-# deprecat for HalfCheetahVelEnvNonstationary
-# def get_r_t(curr_step_ls):
-# # curr_step means the steps since the trajectory begin
-# return torch.from_numpy(np.array([curr_step % 10 for curr_step in curr_step_ls], dtype=int)).to(
-#     device).float().view((-1, 1))
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 # 其实这个文件的逻辑和 adaptive_learner.py 是完全一样的
@@ -172,24 +164,24 @@ class OracleTruncateLearner:
                 clip_param=self.args.ppo_clip_param,
                 optimiser_vae=self.vae.optimiser_vae,
             )
-        elif self.args.policy == 'adaptive_ppo':  # PPO for adaptive learning and meta learning is the same
-            policy = PPO(
-                self.args,
-                policy_net,
-                self.args.policy_value_loss_coef,
-                self.args.policy_entropy_coef,
-                policy_optimiser=self.args.policy_optimiser,
-                policy_anneal_lr=self.args.policy_anneal_lr,
-                train_steps=self.num_updates,
-                lr=self.args.lr_policy,
-                eps=self.args.policy_eps,
-                ppo_epoch=self.args.ppo_num_epochs,
-                num_mini_batch=self.args.ppo_num_minibatch,
-                use_huber_loss=self.args.ppo_use_huberloss,
-                use_clipped_value_loss=self.args.ppo_use_clipped_value_loss,
-                clip_param=self.args.ppo_clip_param,
-                optimiser_vae=self.vae.optimiser_vae,
-            )
+        # elif self.args.policy == 'adaptive_ppo':  # PPO for adaptive learning and meta learning is the same
+        #     policy = PPO(
+        #         self.args,
+        #         policy_net,
+        #         self.args.policy_value_loss_coef,
+        #         self.args.policy_entropy_coef,
+        #         policy_optimiser=self.args.policy_optimiser,
+        #         policy_anneal_lr=self.args.policy_anneal_lr,
+        #         train_steps=self.num_updates,
+        #         lr=self.args.lr_policy,
+        #         eps=self.args.policy_eps,
+        #         ppo_epoch=self.args.ppo_num_epochs,
+        #         num_mini_batch=self.args.ppo_num_minibatch,
+        #         use_huber_loss=self.args.ppo_use_huberloss,
+        #         use_clipped_value_loss=self.args.ppo_use_clipped_value_loss,
+        #         clip_param=self.args.ppo_clip_param,
+        #         optimiser_vae=self.vae.optimiser_vae,
+        #     )
         else:
             raise NotImplementedError
 
@@ -471,20 +463,20 @@ class OracleTruncateLearner:
         if (self.iter_idx + 1) % self.args.vis_interval == 0:
             ret_rms = self.envs.venv.ret_rms if self.args.norm_rew_for_policy else None
             returns_per_episode = utl_eval.visualise_behaviour(args=self.args,
-                                         policy=self.policy,
-                                         image_folder=self.logger.full_output_folder,
-                                         iter_idx=self.iter_idx,
-                                         ret_rms=ret_rms,
-                                         encoder=self.vae.encoder,
-                                         reward_decoder=self.vae.reward_decoder,
-                                         state_decoder=self.vae.state_decoder,
-                                         task_decoder=self.vae.task_decoder,
-                                         compute_rew_reconstruction_loss=self.vae.compute_rew_reconstruction_loss,
-                                         compute_state_reconstruction_loss=self.vae.compute_state_reconstruction_loss,
-                                         compute_task_reconstruction_loss=self.vae.compute_task_reconstruction_loss,
-                                         compute_kl_loss=self.vae.compute_kl_loss,
-                                         tasks=self.train_tasks,
-                                         )
+                                                               policy=self.policy,
+                                                               image_folder=self.logger.full_output_folder,
+                                                               iter_idx=self.iter_idx,
+                                                               ret_rms=ret_rms,
+                                                               encoder=self.vae.encoder,
+                                                               reward_decoder=self.vae.reward_decoder,
+                                                               state_decoder=self.vae.state_decoder,
+                                                               task_decoder=self.vae.task_decoder,
+                                                               compute_rew_reconstruction_loss=self.vae.compute_rew_reconstruction_loss,
+                                                               compute_state_reconstruction_loss=self.vae.compute_state_reconstruction_loss,
+                                                               compute_task_reconstruction_loss=self.vae.compute_task_reconstruction_loss,
+                                                               compute_kl_loss=self.vae.compute_kl_loss,
+                                                               tasks=self.train_tasks,
+                                                               )
 
         # --- evaluate policy ----
 

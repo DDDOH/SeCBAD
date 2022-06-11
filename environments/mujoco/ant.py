@@ -5,7 +5,7 @@ import torch
 from environments.mujoco.mujoco_env import MujocoEnv
 from utils import helpers as utl
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class AntEnv(MujocoEnv):
@@ -14,7 +14,7 @@ class AntEnv(MujocoEnv):
         if use_low_gear_ratio:
             xml_path = 'low_gear_ratio_ant.xml'
         else:
-            xml_path = 'ant.xml'
+            xml_path = 'ant_obselete.xml'
         super().__init__(
             xml_path,
             frame_skip=5,
@@ -48,9 +48,12 @@ class AntEnv(MujocoEnv):
     def _get_obs(self):
         # this is gym ant obs, should use rllab?
         # if position is needed, override this in subclasses
+        # what means by saying "if position is needed, override this in subclasses"?
+        # self.sim.data.qpos.flat[:2], are the x and y position 
+        # https://www.gymlibrary.ml/environments/mujoco/ant/#observation-space
         return np.concatenate([
-            self.sim.data.qpos.flat[2:],
-            self.sim.data.qvel.flat,
+            self.data.qpos.flat[2:],
+            self.data.qvel.flat,
         ])
 
     def reset_model(self):
@@ -61,7 +64,8 @@ class AntEnv(MujocoEnv):
         return self._get_obs()
 
     def viewer_setup(self):
-        self.viewer.cam.distance = self.model.stat.extent * 0.5
+        # self.viewer.cam.distance = self.model.stat.extent * 0.5
+        self.viewer.cam.distance = self.model.stat.extent * 2 # change to 2 may have a larger view
 
     def reset_task(self, task):
         if task is None:

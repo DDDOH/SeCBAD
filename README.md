@@ -1,16 +1,14 @@
-# VariBAD
+# SaCBAD
 
-Code for the paper "[VariBAD: A very good method for Bayes-Adaptive Deep RL via Meta-Learning](https://arxiv.org/abs/1910.08348)" - 
-Luisa Zintgraf, Kyriacos Shiarlis, Maximilian Igl, Sebastian Schulze, 
-Yarin Gal, Katja Hofmann, Shimon Whiteson, published at ICLR 2020.
 
-```
-@inproceedings{zintgraf2020varibad,
-  title={VariBAD: A Very Good Method for Bayes-Adaptive Deep RL via Meta-Learning},
-  author={Zintgraf, Luisa and Shiarlis, Kyriacos and Igl, Maximilian and Schulze, Sebastian and Gal, Yarin and Hofmann, Katja and Whiteson, Shimon},
-  booktitle={International Conference on Learning Representation (ICLR)},
-  year={2020}}
-```
+- [ ] visualize behavior (rendering video)
+
+- [ ] remove warnings
+- [ ] use gym implemented vector_env https://github.com/openai/gym/blob/a6274a55f04a31ecc0edf9f72de687d74bc1783d/gym/vector/vector_env.py
+- [ ] update all mujoco env to newest gym version
+- [ ] update README
+
+
 
 > ! Important !
 > 

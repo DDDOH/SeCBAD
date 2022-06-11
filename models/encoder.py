@@ -6,7 +6,7 @@ from torch.nn import functional as F
 
 from utils import helpers as utl
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class RNNEncoder(nn.Module):
@@ -193,19 +193,18 @@ class RNNEncoder(nn.Module):
             for batch_id in range(batch_size):
                 output_curr_batch = []
                 r_t_curr_batch = r_t[:, batch_id, :]
-                n_segment = sum(r_t_curr_batch == 0) + 1
+                n_segment = sum(r_t_curr_batch == 0)  # at least one
                 loc_reset = torch.where(r_t_curr_batch == 0)[0]
-                if len(loc_reset) != 0:
+                assert n_segment >= 1
+                if n_segment != 1:
                     for i in range(n_segment):
+                        # 0,1,2
                         if i == n_segment - 1:
-                            curr_input = h[loc_reset[i-1]:,
-                                           batch_id, :].unsqueeze(1)
-                        elif i == 0:
-                            curr_input = h[0:loc_reset[i],
+                            curr_input = h[loc_reset[i]:,
                                            batch_id, :].unsqueeze(1)
                         else:
-                            curr_input = h[loc_reset[i-1]
-                                :loc_reset[i], batch_id, :].unsqueeze(1)
+                            curr_input = h[loc_reset[i]:loc_reset[i+1],
+                                           batch_id, :].unsqueeze(1)
                         # hidden state Defaults to zeros if not provided.
                         output_curr_segment, hidden_state = self.gru(
                             curr_input)

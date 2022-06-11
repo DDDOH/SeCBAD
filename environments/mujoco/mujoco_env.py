@@ -35,7 +35,8 @@ class MujocoEnv(mujoco_env.MujocoEnv, Serializable):
             if model_path.startswith("/"):
                 fullpath = model_path
             else:
-                fullpath = os.path.join(os.path.dirname(__file__), "assets", model_path)
+                fullpath = os.path.join(os.path.dirname(
+                    __file__), "assets", model_path)
             if not path.exists(fullpath):
                 raise IOError("File %s does not exist" % fullpath)
             self.frame_skip = frame_skip

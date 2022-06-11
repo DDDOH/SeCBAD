@@ -19,11 +19,12 @@ class Serializable(object):
             return
         if sys.version_info >= (3, 0):
             spec = inspect.getfullargspec(self.__init__)
+            # 5_25 the following code is commented to run ant env, because the following code is not working, reason unknown
             # Exclude the first "self" parameter
-            if spec.varkw:
-                kwargs = locals_[spec.varkw].copy()
-            else:
-                kwargs = dict()
+            # if spec.varkw:
+            #     kwargs = locals_[spec.varkw].copy()
+            # else:
+            kwargs = dict()
             if spec.kwonlyargs:
                 for key in spec.kwonlyargs:
                     kwargs[key] = locals_[key]

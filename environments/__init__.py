@@ -3,6 +3,61 @@ from gym.envs.registration import register
 # Mujoco
 # ----------------------------------------
 
+
+# supplement
+
+register(
+    'HalfDirNon-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.supplement.half_dir_non:HalfDirNon',
+            'max_episode_steps': 200},
+    max_episode_steps=200
+)
+
+register(
+    'HalfGoalNon-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.supplement.half_goal_non:HalfGoalNon',
+            'max_episode_steps': 200},
+    max_episode_steps=200
+)
+
+register(
+    'AntGoalNon-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.supplement.ant_goal_non:AntGoalNon',
+            'max_episode_steps': 200},
+    max_episode_steps=200
+)
+
+
+register(
+    'AntDirNon-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.supplement.ant_dir_non:AntDirNon',
+            'max_episode_steps': 200},
+    max_episode_steps=200
+)
+
+register(
+    'AntVelNon-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.supplement.ant_vel_non:AntVelNon',
+            'max_episode_steps': 200},
+    max_episode_steps=200
+)
+
+register(
+    'HalfVelNon-v0',
+    entry_point='environments.wrappers:mujoco_wrapper',
+    kwargs={'entry_point': 'environments.mujoco.supplement.half_vel_non:HalfVelNon',
+            'max_episode_steps': 200},
+    max_episode_steps=200
+)
+
+
+# archive
+
 # - randomised reward functions
 
 register(
@@ -65,7 +120,7 @@ register(
     'HalfCheetahVelNonstationary-v0',
     entry_point='environments.wrappers:mujoco_wrapper',
     kwargs={'entry_point': 'environments.mujoco.half_cheetah_vel_nonstationary:HalfCheetahVelEnvNonstationary',
-            'max_episode_steps':200},
+            'max_episode_steps': 200},
     max_episode_steps=200
 )
 
@@ -80,7 +135,7 @@ register(
     'HalfCheetahWindNonstationary-v0',
     entry_point='environments.wrappers:mujoco_wrapper',
     kwargs={'entry_point': 'environments.mujoco.half_cheetah_wind_nonstationary:HalfCheetahWindNonstationary',
-            'max_episode_steps':200},
+            'max_episode_steps': 200},
     max_episode_steps=200
 )
 

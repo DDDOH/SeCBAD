@@ -5,24 +5,35 @@ import gym
 import torch
 import random
 
-from environments.env_utils.vec_env import VecEnvWrapper
-from environments.env_utils.vec_env.dummy_vec_env import DummyVecEnv
-from environments.env_utils.vec_env.subproc_vec_env import SubprocVecEnv
-from environments.env_utils.vec_env.vec_normalize import VecNormalize
+from environments.env_utils.vec_env_obselete import VecEnvWrapper
+from environments.env_utils.vec_env_obselete.dummy_vec_env import DummyVecEnv
+from environments.env_utils.vec_env_obselete.subproc_vec_env import SubprocVecEnv
+from environments.env_utils.vec_env_obselete.vec_normalize import VecNormalize
 from environments.wrappers import TimeLimitMask, VariBadWrapper
 
 
 def make_env(env_id, seed, rank, episodes_per_task, tasks, add_done_info, **kwargs):
     def _thunk():
 
+        print_seed = False if 'print_seed' not in kwargs.keys() else (
+            kwargs['print_seed'])
+        if 'print_seed' in kwargs.keys():
+            del kwargs['print_seed']
+
         env = gym.make(env_id, **kwargs)
         if tasks is not None:
-            env.unwrapped.reset_task = lambda x: env.unwrapped.set_task(random.choice(tasks))
+            env.unwrapped.reset_task = lambda x: env.unwrapped.set_task(
+                random.choice(tasks))
         if seed is not None:
+            # this will only set numpy random seed for env.
+            # if print_seed:
+            # print('use {} for seed'.format(seed + rank))
             env.seed(seed + rank)
+            # env.reset(seed=seed+rank)
         if str(env.__class__.__name__).find('TimeLimit') >= 0:
             env = TimeLimitMask(env)
-        env = VariBadWrapper(env=env, episodes_per_task=episodes_per_task, add_done_info=add_done_info)
+        env = VariBadWrapper(
+            env=env, episodes_per_task=episodes_per_task, add_done_info=add_done_info)
         return env
 
     return _thunk
@@ -51,9 +62,11 @@ def make_vec_envs(env_name, seed, num_processes, gamma,
 
     if len(envs.observation_space.shape) == 1:
         if gamma is None:
-            envs = VecNormalize(envs, normalise_rew=normalise_rew, ret_rms=ret_rms)
+            envs = VecNormalize(
+                envs, normalise_rew=normalise_rew, ret_rms=ret_rms)
         else:
-            envs = VecNormalize(envs, normalise_rew=normalise_rew, ret_rms=ret_rms, gamma=gamma)
+            envs = VecNormalize(
+                envs, normalise_rew=normalise_rew, ret_rms=ret_rms, gamma=gamma)
 
     envs = VecPyTorch(envs, device)
 
@@ -80,7 +93,8 @@ class VecPyTorch(VecEnvWrapper):
             assert isinstance(task, list)
         state = self.venv.reset(index=index, task=task)
         if isinstance(state, list):
-            state = [torch.from_numpy(s).float().to(self.device) for s in state]
+            state = [torch.from_numpy(s).float().to(self.device)
+                     for s in state]
         else:
             state = torch.from_numpy(state).float().to(self.device)
         return state
@@ -93,13 +107,16 @@ class VecPyTorch(VecEnvWrapper):
     def step_wait(self):
         state, reward, done, info = self.venv.step_wait()
         if isinstance(state, list):  # raw + normalised
-            state = [torch.from_numpy(s).float().to(self.device) for s in state]
+            state = [torch.from_numpy(s).float().to(self.device)
+                     for s in state]
         else:
             state = torch.from_numpy(state).float().to(self.device)
         if isinstance(reward, list):  # raw + normalised
-            reward = [torch.from_numpy(r).unsqueeze(dim=1).float().to(self.device) for r in reward]
+            reward = [torch.from_numpy(r).unsqueeze(
+                dim=1).float().to(self.device) for r in reward]
         else:
-            reward = torch.from_numpy(reward).unsqueeze(dim=1).float().to(self.device)
+            reward = torch.from_numpy(reward).unsqueeze(
+                dim=1).float().to(self.device)
         return state, reward, done, info
 
     def __getattr__(self, attr):

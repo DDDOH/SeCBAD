@@ -1,10 +1,6 @@
 .DS_Store
 *.pyc
+*.mp4
 __pycache__
 .idea
-
-
-logs/
-scripts/
-docker/
-tmp_results/
+.vscode

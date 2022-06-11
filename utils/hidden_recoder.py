@@ -1,6 +1,8 @@
 import torch
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+
+
 class HiddenRecoder():
     # for evaluate a policy
 
@@ -74,4 +76,3 @@ class HiddenRecoder():
         self.step += 1
 
         # return return_latent
-

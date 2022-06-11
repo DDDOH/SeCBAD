@@ -5,7 +5,7 @@ import torch
 
 from environments.mujoco.half_cheetah import HalfCheetahEnv
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class HalfCheetahDirEnv(HalfCheetahEnv):

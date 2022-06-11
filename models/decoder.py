@@ -4,7 +4,7 @@ from torch.nn import functional as F
 
 from utils import helpers as utl
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class StateTransitionDecoder(nn.Module):

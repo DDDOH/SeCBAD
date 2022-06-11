@@ -19,20 +19,22 @@ from utils import evaluation as utl_eval
 from utils import helpers as utl
 from utils.tb_logger import TBLogger
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class Learner:
     """
     Learner (no meta-learning), can be used to train avg/oracle/belief-oracle policies.
     """
+
     def __init__(self, args):
 
         self.args = args
         utl.seed(self.args.seed, self.args.deterministic_execution)
 
         # calculate number of updates and keep count of frames/iterations
-        self.num_updates = int(args.num_frames) // args.policy_num_steps // args.num_processes
+        self.num_updates = int(
+            args.num_frames) // args.policy_num_steps // args.num_processes
         self.frames = 0
         self.iter_idx = -1
 
@@ -62,7 +64,8 @@ class Learner:
                                       tasks=self.train_tasks,
                                       )
             # save the training tasks so we can evaluate on the same envs later
-            utl.save_obj(self.train_tasks, self.logger.full_output_folder, "train_tasks")
+            utl.save_obj(self.train_tasks,
+                         self.logger.full_output_folder, "train_tasks")
         else:
             self.train_tasks = None
 
@@ -187,12 +190,15 @@ class Learner:
                         deterministic=False)
 
                 # observe reward and next obs
-                [state, belief, task], (rew_raw, rew_normalised), done, infos = utl.env_step(self.envs, action, self.args)
+                [state, belief, task], (rew_raw, rew_normalised), done, infos = utl.env_step(
+                    self.envs, action, self.args)
 
                 # create mask for episode ends
-                masks_done = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done]).to(device)
+                masks_done = torch.FloatTensor(
+                    [[0.0] if done_ else [1.0] for done_ in done]).to(device)
                 # bad_mask is true if episode ended because time limit was reached
-                bad_masks = torch.FloatTensor([[0.0] if 'bad_transition' in info.keys() else [1.0] for info in infos]).to(device)
+                bad_masks = torch.FloatTensor([[0.0] if 'bad_transition' in info.keys() else [
+                                              1.0] for info in infos]).to(device)
 
                 # reset environments that are done
                 done_indices = np.argwhere(done.flatten()).flatten()
@@ -211,7 +217,8 @@ class Learner:
                     value_preds=value,
                     masks=masks_done,
                     bad_masks=bad_masks,
-                    done=torch.from_numpy(np.array(done, dtype=float)).unsqueeze(1),
+                    done=torch.from_numpy(
+                        np.array(done, dtype=float)).unsqueeze(1),
                 )
 
                 self.frames += self.args.num_processes
@@ -247,7 +254,8 @@ class Learner:
                                             self.args.policy_tau,
                                             use_proper_time_limits=self.args.use_proper_time_limits)
 
-        policy_train_stats = self.policy.update(policy_storage=self.policy_storage)
+        policy_train_stats = self.policy.update(
+            policy_storage=self.policy_storage)
 
         return policy_train_stats, None
 
@@ -285,10 +293,14 @@ class Learner:
             returns_avg = returns_per_episode.mean(dim=0)
             returns_std = returns_per_episode.std(dim=0)
             for k in range(len(returns_avg)):
-                self.logger.add('return_avg_per_iter/episode_{}'.format(k + 1), returns_avg[k], self.iter_idx)
-                self.logger.add('return_avg_per_frame/episode_{}'.format(k + 1), returns_avg[k], self.frames)
-                self.logger.add('return_std_per_iter/episode_{}'.format(k + 1), returns_std[k], self.iter_idx)
-                self.logger.add('return_std_per_frame/episode_{}'.format(k + 1), returns_std[k], self.frames)
+                self.logger.add(
+                    'return_avg_per_iter/episode_{}'.format(k + 1), returns_avg[k], self.iter_idx)
+                self.logger.add(
+                    'return_avg_per_frame/episode_{}'.format(k + 1), returns_avg[k], self.frames)
+                self.logger.add(
+                    'return_std_per_iter/episode_{}'.format(k + 1), returns_std[k], self.iter_idx)
+                self.logger.add(
+                    'return_std_per_frame/episode_{}'.format(k + 1), returns_std[k], self.frames)
 
             print("Updates {}, num timesteps {}, FPS {} \n Mean return (train): {:.5f} \n".
                   format(self.iter_idx, self.frames, int(self.frames / (time.time() - start)),
@@ -306,7 +318,8 @@ class Learner:
 
             for idx_label in idx_labels:
 
-                torch.save(self.policy.actor_critic, os.path.join(save_path, f"policy{idx_label}.pt"))
+                torch.save(self.policy.actor_critic, os.path.join(
+                    save_path, f"policy{idx_label}.pt"))
 
                 # save normalisation params of envs
                 if self.args.norm_rew_for_policy:
@@ -323,23 +336,34 @@ class Learner:
 
             train_stats, _ = train_stats
 
-            self.logger.add('policy_losses/value_loss', train_stats[0], self.iter_idx)
-            self.logger.add('policy_losses/action_loss', train_stats[1], self.iter_idx)
-            self.logger.add('policy_losses/dist_entropy', train_stats[2], self.iter_idx)
+            self.logger.add('policy_losses/value_loss',
+                            train_stats[0], self.iter_idx)
+            self.logger.add('policy_losses/action_loss',
+                            train_stats[1], self.iter_idx)
+            self.logger.add('policy_losses/dist_entropy',
+                            train_stats[2], self.iter_idx)
             self.logger.add('policy_losses/sum', train_stats[3], self.iter_idx)
 
             # writer.add_scalar('policy/action', action.mean(), j)
-            self.logger.add('policy/action', run_stats[0][0].float().mean(), self.iter_idx)
+            self.logger.add('policy/action',
+                            run_stats[0][0].float().mean(), self.iter_idx)
             if hasattr(self.policy.actor_critic, 'logstd'):
-                self.logger.add('policy/action_logstd', self.policy.actor_critic.dist.logstd.mean(), self.iter_idx)
-            self.logger.add('policy/action_logprob', run_stats[1].mean(), self.iter_idx)
+                self.logger.add(
+                    'policy/action_logstd', self.policy.actor_critic.dist.logstd.mean(), self.iter_idx)
+            self.logger.add('policy/action_logprob',
+                            run_stats[1].mean(), self.iter_idx)
             self.logger.add('policy/value', run_stats[2].mean(), self.iter_idx)
 
             param_list = list(self.policy.actor_critic.parameters())
-            param_mean = np.mean([param_list[i].data.cpu().numpy().mean() for i in range(len(param_list))])
+            param_mean = np.mean(
+                [param_list[i].data.cpu().numpy().mean() for i in range(len(param_list))])
             self.logger.add('weights/policy', param_mean, self.iter_idx)
-            self.logger.add('weights/policy_std', param_list[0].data.cpu().mean(), self.iter_idx)
+            self.logger.add('weights/policy_std',
+                            param_list[0].data.cpu().mean(), self.iter_idx)
             if param_list[0].grad is not None:
-                param_grad_mean = np.mean([param_list[i].grad.cpu().numpy().mean() for i in range(len(param_list))])
-                self.logger.add('gradients/policy', param_grad_mean, self.iter_idx)
-                self.logger.add('gradients/policy_std', param_list[0].grad.cpu().numpy().mean(), self.iter_idx)
+                param_grad_mean = np.mean(
+                    [param_list[i].grad.cpu().numpy().mean() for i in range(len(param_list))])
+                self.logger.add('gradients/policy',
+                                param_grad_mean, self.iter_idx)
+                self.logger.add(
+                    'gradients/policy_std', param_list[0].grad.cpu().numpy().mean(), self.iter_idx)

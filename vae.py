@@ -11,7 +11,7 @@ from models.encoder import RNNEncoder
 from utils.helpers import get_task_dim, get_num_tasks
 from utils.storage_vae import RolloutStorageVAE
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 class VaribadVAE:
@@ -254,10 +254,17 @@ class VaribadVAE:
         # returns, for each ELBO_t term, one KL (so H+1 kl's)
         if elbo_indices is not None:
             batchsize = kl_divergences.shape[-1]
-            task_indices = torch.arange(batchsize).repeat(
-                self.args.vae_subsample_elbos)
-            kl_divergences = kl_divergences[elbo_indices, task_indices].reshape(
-                (self.args.vae_subsample_elbos, batchsize))
+            if not self.args.decode_single:
+                task_indices = torch.arange(batchsize).repeat(
+                    self.args.vae_subsample_elbos)
+                kl_divergences = kl_divergences[elbo_indices, task_indices].reshape(
+                    (self.args.vae_subsample_elbos, batchsize))
+            else:
+                # 5_24 double check the code here
+                task_indices = torch.arange(batchsize).repeat(
+                    self.args.vae_subsample_elbos * self.args.vae_subsample_decodes)
+                kl_divergences = kl_divergences[elbo_indices, task_indices].reshape(
+                    (self.args.vae_subsample_elbos * self.args.vae_subsample_decodes, batchsize))
 
         return kl_divergences
 
@@ -302,81 +309,170 @@ class VaribadVAE:
         num_decodes = vae_prev_obs.shape[0]
         batchsize = latent_samples.shape[1]  # number of trajectories
 
-        if r_t is None:
-            # subsample elbo terms
-            #   shape before: num_elbos * batchsize * dim
-            #   shape after: vae_subsample_elbos * batchsize * dim
-            # vae_subsample_elbos: for how many timesteps to compute the ELBO; None uses all'
-            if self.args.vae_subsample_elbos is not None:
-                # randomly choose which elbo's to subsample
-                if num_unique_trajectory_lens == 1:
-                    # select diff elbos for each task
-                    elbo_indices = torch.LongTensor(
-                        self.args.vae_subsample_elbos * batchsize).random_(0, num_elbos)
-                else:
-                    # XXX tfuck 这里在做什么， elbo_indices这个东西是干嘛的
-                    # if we have different trajectory lengths, subsample elbo indices separately
-                    # up to their maximum possible encoding length;
-                    # only allow duplicates if the sample size would be larger than the number of samples
-                    elbo_indices = np.concatenate([np.random.choice(range(0, t + 1), self.args.vae_subsample_elbos,
-                                                                    replace=self.args.vae_subsample_elbos > (t+1)) for t in trajectory_lens])
-                    if max_traj_len < self.args.vae_subsample_elbos:
-                        warnings.warn('The required number of ELBOs is larger than the shortest trajectory, '
-                                      'so there will be duplicates in your batch.'
-                                      'To avoid this use --split_batches_by_elbo or --split_batches_by_task.')
-                task_indices = torch.arange(batchsize).repeat(
-                    self.args.vae_subsample_elbos)  # for selection mask
+        if r_t is None:  # no r_t, then we are using varibad algorithm
+            assert self.args.learner_type == 'varibad'
 
-                latent_samples = latent_samples[elbo_indices, task_indices, :].reshape(
-                    (self.args.vae_subsample_elbos, batchsize, -1))
-                num_elbos = latent_samples.shape[0]
+            if not self.args.decode_single:
+                # subsample elbo terms
+                #   shape before: num_elbos * batchsize * dim
+                #   shape after: vae_subsample_elbos * batchsize * dim
+                # vae_subsample_elbos: for how many timesteps to compute the ELBO; None uses all'
+                if self.args.vae_subsample_elbos is not None:
+                    # randomly choose which elbo's to subsample
+                    if num_unique_trajectory_lens == 1:
+                        # select diff elbos for each task
+                        elbo_indices = torch.LongTensor(
+                            self.args.vae_subsample_elbos * batchsize).random_(0, num_elbos)
+                    else:
+                        # XXX tfuck 这里在做什么， elbo_indices这个东西是干嘛的
+                        # if we have different trajectory lengths, subsample elbo indices separately
+                        # up to their maximum possible encoding length;
+                        # only allow duplicates if the sample size would be larger than the number of samples
+                        elbo_indices = np.concatenate([np.random.choice(range(0, t + 1), self.args.vae_subsample_elbos,
+                                                                        replace=self.args.vae_subsample_elbos > (t+1)) for t in trajectory_lens])
+                        if max_traj_len < self.args.vae_subsample_elbos:
+                            warnings.warn('The required number of ELBOs is larger than the shortest trajectory, '
+                                          'so there will be duplicates in your batch.'
+                                          'To avoid this use --split_batches_by_elbo or --split_batches_by_task.')
+                    task_indices = torch.arange(batchsize).repeat(
+                        self.args.vae_subsample_elbos)  # for selection mask
+
+                    latent_samples = latent_samples[elbo_indices, task_indices, :].reshape(
+                        (self.args.vae_subsample_elbos, batchsize, -1))
+                    num_elbos = latent_samples.shape[0]
+                else:
+                    elbo_indices = None
+
+                # expand the state/rew/action inputs to the decoder (to match size of latents)
+                # shape will be: [num tasks in batch] x [num elbos] x [len trajectory (reconstrution loss)] x [dimension]
+                dec_prev_obs = vae_prev_obs.unsqueeze(
+                    0).expand((num_elbos, *vae_prev_obs.shape))
+                dec_next_obs = vae_next_obs.unsqueeze(
+                    0).expand((num_elbos, *vae_next_obs.shape))
+                dec_actions = vae_actions.unsqueeze(
+                    0).expand((num_elbos, *vae_actions.shape))
+                dec_rewards = vae_rewards.unsqueeze(
+                    0).expand((num_elbos, *vae_rewards.shape))
+
+                # subsample reconstruction terms
+                # vae_subsample_decodes: number of reconstruction terms to subsample; None uses all
+                if self.args.vae_subsample_decodes is not None:
+                    # shape before: vae_subsample_elbos * num_decodes * batchsize * dim
+                    # shape after: vae_subsample_elbos * vae_subsample_decodes * batchsize * dim
+                    # (Note that this will always have duplicates given how we set up the code)
+
+                    # 5_15 如果segment不够长，允许重采样
+
+                    indices0 = torch.arange(num_elbos).repeat(
+                        self.args.vae_subsample_decodes * batchsize)
+                    if num_unique_trajectory_lens == 1:
+                        indices1 = torch.LongTensor(
+                            num_elbos * self.args.vae_subsample_decodes * batchsize).random_(0, num_decodes)
+                    else:
+                        indices1 = np.concatenate([np.random.choice(range(0, t), num_elbos * self.args.vae_subsample_decodes,
+                                                                    replace=True) for t in trajectory_lens])
+                    indices2 = torch.arange(batchsize).repeat(
+                        num_elbos * self.args.vae_subsample_decodes)
+                    dec_prev_obs = dec_prev_obs[indices0, indices1, indices2, :].reshape(
+                        (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
+                    dec_next_obs = dec_next_obs[indices0, indices1, indices2, :].reshape(
+                        (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
+                    dec_actions = dec_actions[indices0, indices1, indices2, :].reshape(
+                        (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
+                    dec_rewards = dec_rewards[indices0, indices1, indices2, :].reshape(
+                        (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
+                    num_decodes = dec_prev_obs.shape[1]
+
+                # expand the latent (to match the number of state/rew/action inputs to the decoder)
+                # shape will be: [num tasks in batch] x [num elbos] x [len trajectory (reconstrution loss)] x [dimension]
+                dec_embedding = latent_samples.unsqueeze(0).expand(
+                    (num_decodes, *latent_samples.shape)).transpose(1, 0)
             else:
-                elbo_indices = None
+                # for varibad_single
+                debug = True
+                # use only the current latent when training
+                # self.args.vae_subsample_elbos
+                # self.args.vae_subsample_decodes
+                # 删掉 latent_samples 的最后一个 step，因为这个 step 其实是 RNN 最后的输出，并不会影响到任何一步的决策，如下图，latent_3并不影响任何东西
+                # 但 priori latent 确实会影响第一步的决策
+                """
+                              priori latent      [latent_1, latent_2, latent_3]
+                                   ^                           ^
+                                   |                           |
+                zero_hidden ---> [GRU] ---> hidden ---> [     GRU      ]
+                                                               ^
+                                                               |
+                                                  [s,a,r pair_1, pair_2, pair_3]
 
-            # expand the state/rew/action inputs to the decoder (to match size of latents)
-            # shape will be: [num tasks in batch] x [num elbos] x [len trajectory (reconstrution loss)] x [dimension]
-            dec_prev_obs = vae_prev_obs.unsqueeze(
-                0).expand((num_elbos, *vae_prev_obs.shape))
-            dec_next_obs = vae_next_obs.unsqueeze(
-                0).expand((num_elbos, *vae_next_obs.shape))
-            dec_actions = vae_actions.unsqueeze(
-                0).expand((num_elbos, *vae_actions.shape))
-            dec_rewards = vae_rewards.unsqueeze(
-                0).expand((num_elbos, *vae_rewards.shape))
+                """
+                latent_samples = latent_samples[:-1, :, :]
+                len_traj = latent_samples.shape[0]
+                # to match the shape of latent_samples
 
-            # subsample reconstruction terms
-            # vae_subsample_decodes: number of reconstruction terms to subsample; None uses all
-            if self.args.vae_subsample_decodes is not None:
-                # shape before: vae_subsample_elbos * num_decodes * batchsize * dim
-                # shape after: vae_subsample_elbos * vae_subsample_decodes * batchsize * dim
-                # (Note that this will always have duplicates given how we set up the code)
+                batch_id = np.expand_dims(np.arange(batchsize), axis=0).repeat(
+                    len_traj, 0)
 
-                # 5_15 如果segment不够长，允许重采样
+                elbos_index = np.random.randint(0, len_traj, size=(
+                    self.args.vae_subsample_elbos * self.args.vae_subsample_decodes, batchsize))
 
-                indices0 = torch.arange(num_elbos).repeat(
-                    self.args.vae_subsample_decodes * batchsize)
-                if num_unique_trajectory_lens == 1:
-                    indices1 = torch.LongTensor(
-                        num_elbos * self.args.vae_subsample_decodes * batchsize).random_(0, num_decodes)
-                else:
-                    indices1 = np.concatenate([np.random.choice(range(0, t), num_elbos * self.args.vae_subsample_decodes,
-                                                                replace=True) for t in trajectory_lens])
-                indices2 = torch.arange(batchsize).repeat(
-                    num_elbos * self.args.vae_subsample_decodes)
-                dec_prev_obs = dec_prev_obs[indices0, indices1, indices2, :].reshape(
-                    (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
-                dec_next_obs = dec_next_obs[indices0, indices1, indices2, :].reshape(
-                    (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
-                dec_actions = dec_actions[indices0, indices1, indices2, :].reshape(
-                    (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
-                dec_rewards = dec_rewards[indices0, indices1, indices2, :].reshape(
-                    (num_elbos, self.args.vae_subsample_decodes, batchsize, -1))
-                num_decodes = dec_prev_obs.shape[1]
+                if debug:
+                    # if debug, put 0 and len_traj-1 into elbos_index, make sure the first and last time step are selected into self.args.vae_subsample_elbos
+                    elbos_index[0, 0] = 0
+                    elbos_index[-1, -1] = len_traj-1
 
-            # expand the latent (to match the number of state/rew/action inputs to the decoder)
-            # shape will be: [num tasks in batch] x [num elbos] x [len trajectory (reconstrution loss)] x [dimension]
-            dec_embedding = latent_samples.unsqueeze(0).expand(
-                (num_decodes, *latent_samples.shape)).transpose(1, 0)
+                # elbos_index[i,k] = elbos_index_flat[i * batchsize + k]
+                elbos_index_flat = elbos_index.flatten()
+                elbos_batch_index = np.expand_dims(np.arange(batchsize), axis=0).repeat(
+                    self.args.vae_subsample_elbos * self.args.vae_subsample_decodes, 0)
+                batch_index_flat = elbos_batch_index.flatten()
+
+                # dec_latent_samples of shape [vae_subsample_elbos, vae_subsample_decodes, batch_size, latent_dim]
+                # dec_latent_samples[i,j,k,:]: latent_sample for i-th elbo, j-th decode, k-th trajectory
+                dec_embedding = latent_samples[elbos_index_flat,
+                                               batch_index_flat, :]
+
+                # dec_prev_obs = torch.zeros(
+                # (self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, vae_prev_obs.shape[-1])).to(device)
+                # dec_actions = torch.zeros(
+                #     (self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, vae_actions.shape[-1])).to(device)
+                # dec_rewards = torch.zeros(
+                #     (self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, vae_rewards.shape[-1])).to(device)
+                # dec_next_obs = torch.zeros(
+                #     (self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, vae_next_obs.shape[-1])).to(device)
+                # dec_nonstationary_task = torch.zeros(
+                #     (self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, vae_nonstationary_task.shape[-1])).to(device)
+
+                dec_prev_obs = vae_prev_obs[elbos_index_flat,
+                                            batch_index_flat, :]
+                dec_actions = vae_actions[elbos_index_flat,
+                                          batch_index_flat, :]
+                dec_rewards = vae_rewards[elbos_index_flat,
+                                          batch_index_flat, :]
+                dec_next_obs = vae_next_obs[elbos_index_flat,
+                                            batch_index_flat, :]
+                dec_nonstationary_task = vae_nonstationary_tasks[elbos_index_flat,
+                                                                 batch_index_flat, :]
+
+                # [num_elbo_terms] x [num_reconstruction_terms] x [num_trajectories]
+
+                dec_embedding = dec_embedding.reshape(
+                    self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, -1)
+                dec_prev_obs = dec_prev_obs.reshape(
+                    self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, -1)
+                dec_actions = dec_actions.reshape(
+                    self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, -1)
+                dec_rewards = dec_rewards.reshape(
+                    self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, -1)
+                dec_next_obs = dec_next_obs.reshape(
+                    self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, -1)
+                dec_nonstationary_task = dec_nonstationary_task.reshape(
+                    self.args.vae_subsample_elbos, self.args.vae_subsample_decodes, batchsize, -1)
+
+                # dec_latent_samples = np.expand_dims(dec_latent_samples, 1).repeat(
+                #     self.args.vae_subsample_decodes, 1)
+                # dec_embedding = dec_embedding.unsqueeze(1).repeat_interleave(
+                #     self.args.vae_subsample_decodes, 1)
+
         else:
             debug = False
             # 删掉 latent_samples 的最后一个 step，因为这个 step 其实是 RNN 最后的输出，并不会影响到任何一步的决策，如下图，latent_3并不影响任何东西
@@ -447,10 +543,9 @@ class VaribadVAE:
             dec_embedding = dec_embedding.unsqueeze(1).repeat_interleave(
                 self.args.vae_subsample_decodes, 1)
 
-            
             # dec_latent_samples_segment_id
             dec_latent_samples_segment_id = segment_id[elbos_index_flat,
-                                                        batch_index_flat]
+                                                       batch_index_flat]
             dec_latent_samples_segment_id = dec_latent_samples_segment_id.reshape(
                 self.args.vae_subsample_elbos, batchsize)
             dec_latent_samples_segment_id = np.expand_dims(dec_latent_samples_segment_id, 1).repeat(
@@ -547,19 +642,6 @@ class VaribadVAE:
                 assert np.all(dec_latent_samples_batch_id ==
                               dec_prev_obs_batch_id)
 
-                # dec_embedding = torch.tensor(
-                #     dec_latent_samples).to(device).to(torch.float32)
-                # dec_prev_obs = torch.tensor(dec_prev_obs).to(
-                #     device).to(torch.float32)
-                # dec_actions = torch.tensor(dec_actions).to(
-                #     device).to(torch.float32)
-                # dec_rewards = torch.tensor(dec_rewards).to(
-                #     device).to(torch.float32)
-                # dec_next_obs = torch.tensor(dec_next_obs).to(
-                #     device).to(torch.float32)
-                # dec_nonstationary_task = torch.tensor(
-                #     dec_nonstationary_task).to(device).to(torch.float32)
-
         if self.args.decode_reward:
             # compute reconstruction loss for this trajectory (for each timestep that was encoded, decode everything and sum it up)
             # shape: [num_elbo_terms] x [num_reconstruction_terms] x [num_trajectories]
@@ -635,11 +717,18 @@ class VaribadVAE:
             # compute the KL term for each ELBO term of the current trajectory
             # shape: [num_elbo_terms] x [num_trajectories]
             if r_t is not None:
+                # code for sacbad
                 kl_loss = self.compute_kl_loss(
                     latent_mean, latent_logvar, elbos_index_flat)
             else:
-                kl_loss = self.compute_kl_loss(
-                    latent_mean, latent_logvar, elbo_indices)
+                # code for vaibad_ori
+                if not self.args.decode_single:
+                    kl_loss = self.compute_kl_loss(
+                        latent_mean, latent_logvar, elbo_indices)
+                else:  # for varibad single
+                    kl_loss = self.compute_kl_loss(
+                        latent_mean, latent_logvar, elbos_index_flat)
+
             # avg/sum the elbos
             if self.args.vae_avg_elbo_terms:
                 kl_loss = kl_loss.mean(dim=0)

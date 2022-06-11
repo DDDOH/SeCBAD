@@ -14,7 +14,8 @@ from utils.hidden_recoder import HiddenRecoder
 from scipy.stats import norm
 
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+
 
 class AntDir2DNonstationary(AntEnv):
     """
@@ -82,7 +83,8 @@ class AntDir2DNonstationary(AntEnv):
             self.reset_task(None)
 
         self.goal_angle = self.angle_base + np.random.normal(0, 0.02)
-        self.goal_direction = np.array([np.cos(self.goal_angle), np.sin(self.goal_angle)])
+        self.goal_direction = np.array(
+            [np.cos(self.goal_angle), np.sin(self.goal_angle)])
 
         torso_xyz_before = np.array(self.get_body_com("torso"))
 
@@ -92,8 +94,8 @@ class AntDir2DNonstationary(AntEnv):
         # torso_velocity[:2] / self.dt 是水平面上的 velocity
         agent_velocity = torso_velocity[:2] / self.dt
         forward_velocity = np.dot(agent_velocity, self.goal_direction)
-        vertical_velocity = np.sqrt( agent_velocity[0]**2 + agent_velocity[1]**2 - forward_velocity**2)
-        
+        vertical_velocity = np.sqrt(
+            agent_velocity[0]**2 + agent_velocity[1]**2 - forward_velocity**2)
 
         # ctrl_cost = .5 * np.square(action).sum()
         # contact_cost = 0.5 * 1e-3 * np.sum(
@@ -104,11 +106,12 @@ class AntDir2DNonstationary(AntEnv):
         # notdone = np.isfinite(state).all() and state[2] >= 0.2 and state[2] <= 1.0
         # done = not notdone # the traj_len for this may not be 200!!!
         # ob = self._get_obs()
-        
+
         ctrl_cost = .1 * np.square(action).sum()
         contact_cost = 0.5 * 1e-3 * np.sum(
             np.square(np.clip(self.sim.data.cfrc_ext, -1, 1)))
-        reward = 1 * forward_velocity - ctrl_cost - contact_cost - 0.5 * vertical_velocity
+        reward = 1 * forward_velocity - ctrl_cost - \
+            contact_cost - 0.5 * vertical_velocity
         state = self.state_vector()
         done = False
         ob = self._get_obs()
@@ -132,11 +135,14 @@ class AntDir2DNonstationary(AntEnv):
         if (agent_velocity[0] > 0) & (agent_velocity[1] > 0):
             curr_direction = np.arctan(agent_velocity[1]/agent_velocity[0])
         elif (agent_velocity[0] > 0) & (agent_velocity[1] < 0):
-            curr_direction = np.arctan(agent_velocity[1]/agent_velocity[0]) + 2 * np.pi
+            curr_direction = np.arctan(
+                agent_velocity[1]/agent_velocity[0]) + 2 * np.pi
         elif (agent_velocity[0] < 0) & (agent_velocity[1] > 0):
-            curr_direction = np.arctan(agent_velocity[1]/agent_velocity[0]) + np.pi
+            curr_direction = np.arctan(
+                agent_velocity[1]/agent_velocity[0]) + np.pi
         elif (agent_velocity[0] < 0) & (agent_velocity[1] < 0):
-            curr_direction = np.arctan(agent_velocity[1]/agent_velocity[0]) + np.pi
+            curr_direction = np.arctan(
+                agent_velocity[1]/agent_velocity[0]) + np.pi
         return curr_direction
 
     @staticmethod
@@ -149,7 +155,6 @@ class AntDir2DNonstationary(AntEnv):
                             return_pos=False,
                             **kwargs,
                             ):
-
 
         if args.learner_type == 'adaptive':
 
@@ -196,7 +201,6 @@ class AntDir2DNonstationary(AntEnv):
                     # G_t = 1, G_t_minus_1 = k
                     return 1/unwrapped_env.change_interval_base
 
-
             for episode_idx in range(num_episodes):
 
                 hidden_rec = HiddenRecoder(encoder)
@@ -217,9 +221,11 @@ class AntDir2DNonstationary(AntEnv):
                         curr_latent_sample, curr_latent_mean, curr_latent_logvar = hidden_rec.encoder_init(
                             0)
                         if curr_latent_sample.dim() == 3:
-                            curr_latent_sample = curr_latent_sample[0].to(device)
+                            curr_latent_sample = curr_latent_sample[0].to(
+                                device)
                             curr_latent_mean = curr_latent_mean[0].to(device)
-                            curr_latent_logvar = curr_latent_logvar[0].to(device)
+                            curr_latent_logvar = curr_latent_logvar[0].to(
+                                device)
                         else:
                             curr_latent_sample = curr_latent_sample.to(device)
                             curr_latent_mean = curr_latent_mean.to(device)
@@ -239,14 +245,15 @@ class AntDir2DNonstationary(AntEnv):
                 # for step_idx in range(1, env._max_episode_steps + 1):
                 for step_idx in progressbar.progressbar(range(1, env._max_episode_steps + 1), redirect_stdout=True):
                     if step_idx == 1:
-                        episode_prev_obs[episode_idx].append(start_state.clone())
+                        episode_prev_obs[episode_idx].append(
+                            start_state.clone())
                     else:
                         episode_prev_obs[episode_idx].append(state.clone())
                     # act
                     latent = utl.get_latent_for_policy(args,
-                                                    latent_sample=curr_latent_sample,
-                                                    latent_mean=curr_latent_mean,
-                                                    latent_logvar=curr_latent_logvar)
+                                                       latent_sample=curr_latent_sample,
+                                                       latent_mean=curr_latent_mean,
+                                                       latent_logvar=curr_latent_logvar)
                     _, action = policy.act(
                         state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
 
@@ -258,7 +265,6 @@ class AntDir2DNonstationary(AntEnv):
                     episode_tasks[-1].append(info[0]['curr_task'])
                     velocity_rec[-1].append(info[0]['forward_velocity'])
                     episode_direction[-1].append(info[0]['curr_direction'])
-
 
                     # keep track of position
                     pos[episode_idx].append(
@@ -290,43 +296,45 @@ class AntDir2DNonstationary(AntEnv):
                             state_mean = kwargs['state_decoder'](
                                 latent_state=latent_samples, state=episode_prev_obs[episode_idx][-1], actions=action)
 
-                            second_term = norm.pdf(rew.cpu().item(), loc=reward_mean.item(), scale=1)
-                            second_term *= np.prod(norm.pdf(state.squeeze(0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
-
+                            second_term = norm.pdf(
+                                rew.cpu().item(), loc=reward_mean.item(), scale=1)
+                            second_term *= np.prod(norm.pdf(state.squeeze(
+                                0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
 
                             third_term = p_G(G_t=i, G_t_minus_1=i-1)
                             g_G_t_dist[i] = p_G_t_dist[i-1] * \
                                 second_term * third_term
 
-
                         g_G_t_dist[1] = 0
                         for k in range(1, step_idx+1):
 
                             latent_samples, latent_mean, latent_logvar = hidden_rec.get_record(
-                                    reset_after=step_idx, up_to=step_idx, label='latent')
+                                reset_after=step_idx, up_to=step_idx, label='latent')
 
                             reward_mean = kwargs['reward_decoder'](
                                 latent_state=latent_samples, next_state=state, prev_state=episode_prev_obs[episode_idx][-1], actions=action)
                             state_mean = kwargs['state_decoder'](
                                 latent_state=latent_samples, state=episode_prev_obs[episode_idx][-1], actions=action)
 
-                            second_term = norm.pdf(rew.cpu().item(), loc=reward_mean.item(), scale=1)
-                            second_term *= np.prod(norm.pdf(state.squeeze(0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
+                            second_term = norm.pdf(
+                                rew.cpu().item(), loc=reward_mean.item(), scale=1)
+                            second_term *= np.prod(norm.pdf(state.squeeze(
+                                0).cpu(), loc=state_mean.squeeze(0).cpu(), scale=1))
 
-                            g_G_t_dist[1] += p_G_t_dist[k] * second_term * p_G(G_t=1, G_t_minus_1=k)
-
+                            g_G_t_dist[1] += p_G_t_dist[k] * \
+                                second_term * p_G(G_t=1, G_t_minus_1=k)
 
                         # get sum of g_G_t_dist
                         sum_g_G_t = sum(g_G_t_dist.values())
                         # divide each value of g_G_t_dist by sum_g_G_t
                         # use for next iteration
                         p_G_t_dist = {k: v / sum_g_G_t for k,
-                                    v in g_G_t_dist.items()}
+                                      v in g_G_t_dist.items()}
 
-                        best_unchange_length = max(g_G_t_dist, key=g_G_t_dist.get)
+                        best_unchange_length = max(
+                            g_G_t_dist, key=g_G_t_dist.get)
                         best_reset_after = step_idx + 1 - best_unchange_length
                         best_unchange_length_rec.append(best_unchange_length)
-
 
                         curr_latent_sample, curr_latent_mean, curr_latent_logvar = hidden_rec.get_record(
                             reset_after=best_reset_after, up_to=step_idx, label='latent')
@@ -352,7 +360,8 @@ class AntDir2DNonstationary(AntEnv):
                         start_state = info[0]['start_state']
                         start_state = torch.from_numpy(
                             start_state).reshape((1, -1)).float().to(device)
-                        start_pos = unwrapped_env.get_body_com("torso")[:2].copy()
+                        start_pos = unwrapped_env.get_body_com("torso")[
+                            :2].copy()
                         break
 
                 episode_returns.append(sum(curr_rollout_rew))
@@ -373,16 +382,17 @@ class AntDir2DNonstationary(AntEnv):
             plt.figure(figsize=(15, 4 * num_episodes))
             pos = [np.array(p) for p in pos]
 
-            min_x = min(min(p[:,0]) for p in pos)
-            max_x = max(max(p[:,0]) for p in pos)
-            min_y = min(min(p[:,1]) for p in pos)
-            max_y = max(max(p[:,1]) for p in pos)
+            min_x = min(min(p[:, 0]) for p in pos)
+            max_x = max(max(p[:, 0]) for p in pos)
+            min_y = min(min(p[:, 1]) for p in pos)
+            max_y = max(max(p[:, 1]) for p in pos)
             span_x = max_x - min_x
             span_y = max_y - min_y
             for i in range(num_episodes):
                 # position_x & pos_y
                 plt.subplot(num_episodes, 4, i + 1)
-                plt.scatter(pos[i][:,0], pos[i][:,1], c=np.arange(pos[i].shape[0]))
+                plt.scatter(pos[i][:, 0], pos[i][:, 1],
+                            c=np.arange(pos[i].shape[0]))
                 plt.xlim(min_x - 0.05 * span_x, max_x + 0.05 * span_x)
                 plt.ylim(min_y - 0.05 * span_y, max_y + 0.05 * span_y)
                 plt.xlabel('pos_x')
@@ -392,7 +402,8 @@ class AntDir2DNonstationary(AntEnv):
                 # task angle & step
                 # true angle & step
                 plt.subplot(num_episodes, 4, i + 1 + num_episodes)
-                plt.plot(episode_direction[i], range(len(episode_direction[i])), 'k')
+                plt.plot(episode_direction[i], range(
+                    len(episode_direction[i])), 'k')
                 plt.plot(episode_tasks[i], range(len(episode_tasks[i])), 'r')
                 plt.xlim(-0.1, 2*np.pi+0.1)
                 plt.title('angle')
@@ -439,8 +450,6 @@ class AntDir2DNonstationary(AntEnv):
             episode_returns = []
             episode_lengths = []
 
-            
-
             if encoder is not None:
                 episode_latent_samples = [[] for _ in range(num_episodes)]
                 episode_latent_means = [[] for _ in range(num_episodes)]
@@ -481,28 +490,35 @@ class AntDir2DNonstationary(AntEnv):
                 if encoder is not None:
                     if episode_idx == 0:
                         # reset to prior
-                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(1)
+                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(
+                            1)
                         curr_latent_sample = curr_latent_sample[0].to(device)
                         curr_latent_mean = curr_latent_mean[0].to(device)
                         curr_latent_logvar = curr_latent_logvar[0].to(device)
-                    episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                    episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                    episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                    episode_latent_samples[episode_idx].append(
+                        curr_latent_sample[0].clone())
+                    episode_latent_means[episode_idx].append(
+                        curr_latent_mean[0].clone())
+                    episode_latent_logvars[episode_idx].append(
+                        curr_latent_logvar[0].clone())
 
                 for step_idx in range(1, env._max_episode_steps + 1):
 
                     if step_idx == 1:
-                        episode_prev_obs[episode_idx].append(start_state.clone())
+                        episode_prev_obs[episode_idx].append(
+                            start_state.clone())
                     else:
                         episode_prev_obs[episode_idx].append(state.clone())
                     # act
                     latent = utl.get_latent_for_policy(args,
-                                                    latent_sample=curr_latent_sample,
-                                                    latent_mean=curr_latent_mean,
-                                                    latent_logvar=curr_latent_logvar)
-                    _, action = policy.act(state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
+                                                       latent_sample=curr_latent_sample,
+                                                       latent_mean=curr_latent_mean,
+                                                       latent_logvar=curr_latent_logvar)
+                    _, action = policy.act(
+                        state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
 
-                    (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(env, action, args)
+                    (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(
+                        env, action, args)
                     state = state.reshape((1, -1)).float().to(device)
                     r_t = torch.tensor([info[0]['r_t']]).to(device)
                     done = torch.tensor(done).to(device)
@@ -522,20 +538,20 @@ class AntDir2DNonstationary(AntEnv):
                     # bad_masks = torch.FloatTensor([[0.0] if 'bad_transition' in info.keys() else [
                     #                             1.0] for info in infos]).to(device)
 
-        
                     # infos will not passed to agent
                     episode_tasks[-1].append(info[0]['curr_task'])
                     velocity_rec[-1].append(info[0]['forward_velocity'])
                     episode_direction[-1].append(info[0]['curr_direction'])
 
                     # keep track of position
-                    pos[episode_idx].append(unwrapped_env.get_body_com("torso")[:2].copy())
+                    pos[episode_idx].append(
+                        unwrapped_env.get_body_com("torso")[:2].copy())
 
                     if encoder is not None:
                         # update task embedding
                         with torch.no_grad():
-                        # compute next embedding (for next loop and/or value prediction bootstrap)
-                        # 这里 是在 前一个 state 上，用 action, 得到 rew_raw 以及 next_state，对应的是 a_t-1, r_t, s_t, 和 paper 里 figure 2 对应
+                            # compute next embedding (for next loop and/or value prediction bootstrap)
+                            # 这里 是在 前一个 state 上，用 action, 得到 rew_raw 以及 next_state，对应的是 a_t-1, r_t, s_t, 和 paper 里 figure 2 对应
                             curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = utl.update_encoding(
                                 encoder=encoder,
                                 next_obs=state,
@@ -544,23 +560,29 @@ class AntDir2DNonstationary(AntEnv):
                                 done=done,
                                 hidden_state=hidden_state,
                                 r_t=r_t)
-                        
+
                         # curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
                         #     action.reshape(1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
                         #     hidden_state, return_prior=False)
 
-                        episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                        episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                        episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                        episode_latent_samples[episode_idx].append(
+                            curr_latent_sample[0].clone())
+                        episode_latent_means[episode_idx].append(
+                            curr_latent_mean[0].clone())
+                        episode_latent_logvars[episode_idx].append(
+                            curr_latent_logvar[0].clone())
 
                     episode_next_obs[episode_idx].append(state.clone())
                     episode_rewards[episode_idx].append(rew.clone())
-                    episode_actions[episode_idx].append(action.reshape(1, -1).clone())
+                    episode_actions[episode_idx].append(
+                        action.reshape(1, -1).clone())
 
                     if info[0]['done_mdp'] and not done:
                         start_state = info[0]['start_state']
-                        start_state = torch.from_numpy(start_state).reshape((1, -1)).float().to(device)
-                        start_pos = unwrapped_env.get_body_com("torso")[:2].copy()
+                        start_state = torch.from_numpy(
+                            start_state).reshape((1, -1)).float().to(device)
+                        start_pos = unwrapped_env.get_body_com("torso")[
+                            :2].copy()
                         break
 
                 episode_returns.append(sum(curr_rollout_rew))
@@ -580,17 +602,18 @@ class AntDir2DNonstationary(AntEnv):
 
             plt.figure(figsize=(15, 4 * num_episodes))
             pos = [np.array(p) for p in pos]
-            
-            min_x = min(min(p[:,0]) for p in pos)
-            max_x = max(max(p[:,0]) for p in pos)
-            min_y = min(min(p[:,1]) for p in pos)
-            max_y = max(max(p[:,1]) for p in pos)
+
+            min_x = min(min(p[:, 0]) for p in pos)
+            max_x = max(max(p[:, 0]) for p in pos)
+            min_y = min(min(p[:, 1]) for p in pos)
+            max_y = max(max(p[:, 1]) for p in pos)
             span_x = max_x - min_x
             span_y = max_y - min_y
             for i in range(num_episodes):
                 # position_x & pos_y
                 plt.subplot(num_episodes, 3, i + 1)
-                plt.scatter(pos[i][:,0], pos[i][:,1], c=np.arange(pos[i].shape[0]))
+                plt.scatter(pos[i][:, 0], pos[i][:, 1],
+                            c=np.arange(pos[i].shape[0]))
                 plt.xlim(min_x - 0.05 * span_x, max_x + 0.05 * span_x)
                 plt.ylim(min_y - 0.05 * span_y, max_y + 0.05 * span_y)
                 plt.xlabel('pos_x')
@@ -600,7 +623,8 @@ class AntDir2DNonstationary(AntEnv):
                 # task angle & step
                 # true angle & step
                 plt.subplot(num_episodes, 3, i + 1 + num_episodes)
-                plt.plot(episode_direction[i], range(len(episode_direction[i])), 'k')
+                plt.plot(episode_direction[i], range(
+                    len(episode_direction[i])), 'k')
                 plt.plot(episode_tasks[i], range(len(episode_tasks[i])), 'r')
                 plt.xlim(-0.1, 2*np.pi+0.1)
                 plt.title('angle')
@@ -610,7 +634,6 @@ class AntDir2DNonstationary(AntEnv):
                 plt.subplot(num_episodes, 4, i + 2 + num_episodes)
                 plt.plot(velocity_rec[i], range(len(velocity_rec[i])), 'k')
                 plt.title('velocity along task angle')
-
 
             plt.tight_layout()
             if image_folder is not None:
@@ -628,8 +651,6 @@ class AntDir2DNonstationary(AntEnv):
                     episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
                     episode_returns, pos, None
 
-
-        
         elif args.learner_type == 'varibad':
             num_episodes = args.max_rollouts_per_task
             unwrapped_env = env.venv.unwrapped.envs[0].unwrapped
@@ -672,8 +693,6 @@ class AntDir2DNonstationary(AntEnv):
             pos = [[] for _ in range(args.max_rollouts_per_task)]
             start_pos = unwrapped_env.get_body_com("torso")[:2].copy()
 
-            
-
             for episode_idx in range(num_episodes):
 
                 curr_rollout_rew = []
@@ -686,28 +705,35 @@ class AntDir2DNonstationary(AntEnv):
                 if encoder is not None:
                     if episode_idx == 0:
                         # reset to prior
-                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(1)
+                        curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder.prior(
+                            1)
                         curr_latent_sample = curr_latent_sample[0].to(device)
                         curr_latent_mean = curr_latent_mean[0].to(device)
                         curr_latent_logvar = curr_latent_logvar[0].to(device)
-                    episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                    episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                    episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                    episode_latent_samples[episode_idx].append(
+                        curr_latent_sample[0].clone())
+                    episode_latent_means[episode_idx].append(
+                        curr_latent_mean[0].clone())
+                    episode_latent_logvars[episode_idx].append(
+                        curr_latent_logvar[0].clone())
 
                 for step_idx in range(1, env._max_episode_steps + 1):
 
                     if step_idx == 1:
-                        episode_prev_obs[episode_idx].append(start_state.clone())
+                        episode_prev_obs[episode_idx].append(
+                            start_state.clone())
                     else:
                         episode_prev_obs[episode_idx].append(state.clone())
                     # act
                     latent = utl.get_latent_for_policy(args,
-                                                    latent_sample=curr_latent_sample,
-                                                    latent_mean=curr_latent_mean,
-                                                    latent_logvar=curr_latent_logvar)
-                    _, action = policy.act(state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
+                                                       latent_sample=curr_latent_sample,
+                                                       latent_mean=curr_latent_mean,
+                                                       latent_logvar=curr_latent_logvar)
+                    _, action = policy.act(
+                        state=state.view(-1), latent=latent, belief=belief, task=task, deterministic=True)
 
-                    (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(env, action, args)
+                    (state, belief, task), (rew, rew_normalised), done, info = utl.env_step(
+                        env, action, args)
                     state = state.reshape((1, -1)).float().to(device)
 
                     # infos will not passed to agent
@@ -716,26 +742,34 @@ class AntDir2DNonstationary(AntEnv):
                     episode_direction[-1].append(info[0]['curr_direction'])
 
                     # keep track of position
-                    pos[episode_idx].append(unwrapped_env.get_body_com("torso")[:2].copy())
+                    pos[episode_idx].append(
+                        unwrapped_env.get_body_com("torso")[:2].copy())
 
                     if encoder is not None:
                         # update task embedding
                         curr_latent_sample, curr_latent_mean, curr_latent_logvar, hidden_state = encoder(
-                            action.reshape(1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
+                            action.reshape(
+                                1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
                             hidden_state, return_prior=False)
 
-                        episode_latent_samples[episode_idx].append(curr_latent_sample[0].clone())
-                        episode_latent_means[episode_idx].append(curr_latent_mean[0].clone())
-                        episode_latent_logvars[episode_idx].append(curr_latent_logvar[0].clone())
+                        episode_latent_samples[episode_idx].append(
+                            curr_latent_sample[0].clone())
+                        episode_latent_means[episode_idx].append(
+                            curr_latent_mean[0].clone())
+                        episode_latent_logvars[episode_idx].append(
+                            curr_latent_logvar[0].clone())
 
                     episode_next_obs[episode_idx].append(state.clone())
                     episode_rewards[episode_idx].append(rew.clone())
-                    episode_actions[episode_idx].append(action.reshape(1, -1).clone())
+                    episode_actions[episode_idx].append(
+                        action.reshape(1, -1).clone())
 
                     if info[0]['done_mdp'] and not done:
                         start_state = info[0]['start_state']
-                        start_state = torch.from_numpy(start_state).reshape((1, -1)).float().to(device)
-                        start_pos = unwrapped_env.get_body_com("torso")[:2].copy()
+                        start_state = torch.from_numpy(
+                            start_state).reshape((1, -1)).float().to(device)
+                        start_pos = unwrapped_env.get_body_com("torso")[
+                            :2].copy()
                         break
 
                 episode_returns.append(sum(curr_rollout_rew))
@@ -743,8 +777,10 @@ class AntDir2DNonstationary(AntEnv):
 
             # clean up
             if encoder is not None:
-                episode_latent_means = [torch.stack(e) for e in episode_latent_means]
-                episode_latent_logvars = [torch.stack(e) for e in episode_latent_logvars]
+                episode_latent_means = [torch.stack(
+                    e) for e in episode_latent_means]
+                episode_latent_logvars = [torch.stack(
+                    e) for e in episode_latent_logvars]
 
             episode_prev_obs = [torch.cat(e) for e in episode_prev_obs]
             episode_next_obs = [torch.cat(e) for e in episode_next_obs]
@@ -753,17 +789,18 @@ class AntDir2DNonstationary(AntEnv):
 
             plt.figure(figsize=(15, 4 * num_episodes))
             pos = [np.array(p) for p in pos]
-            
-            min_x = min(min(p[:,0]) for p in pos)
-            max_x = max(max(p[:,0]) for p in pos)
-            min_y = min(min(p[:,1]) for p in pos)
-            max_y = max(max(p[:,1]) for p in pos)
+
+            min_x = min(min(p[:, 0]) for p in pos)
+            max_x = max(max(p[:, 0]) for p in pos)
+            min_y = min(min(p[:, 1]) for p in pos)
+            max_y = max(max(p[:, 1]) for p in pos)
             span_x = max_x - min_x
             span_y = max_y - min_y
             for i in range(num_episodes):
                 # position_x & pos_y
                 plt.subplot(num_episodes, 3, i + 1)
-                plt.scatter(pos[i][:,0], pos[i][:,1], c=np.arange(pos[i].shape[0]))
+                plt.scatter(pos[i][:, 0], pos[i][:, 1],
+                            c=np.arange(pos[i].shape[0]))
                 plt.xlim(min_x - 0.05 * span_x, max_x + 0.05 * span_x)
                 plt.ylim(min_y - 0.05 * span_y, max_y + 0.05 * span_y)
                 plt.xlabel('pos_x')
@@ -773,7 +810,8 @@ class AntDir2DNonstationary(AntEnv):
                 # task angle & step
                 # true angle & step
                 plt.subplot(num_episodes, 3, i + 1 + num_episodes)
-                plt.plot(episode_direction[i], range(len(episode_direction[i])), 'k')
+                plt.plot(episode_direction[i], range(
+                    len(episode_direction[i])), 'k')
                 plt.plot(episode_tasks[i], range(len(episode_tasks[i])), 'r')
                 plt.xlim(-0.1, 2*np.pi+0.1)
                 plt.title('angle')
@@ -797,7 +835,6 @@ class AntDir2DNonstationary(AntEnv):
                 return episode_latent_means, episode_latent_logvars, \
                     episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, \
                     episode_returns, pos, None
-
 
 
 # class AntDir2DEnv(AntDirEnv):

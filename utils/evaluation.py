@@ -3,11 +3,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import os
 
 from environments.parallel_envs import make_vec_envs
 from utils import helpers as utl
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
 def evaluate(args,
@@ -18,6 +19,7 @@ def evaluate(args,
              encoder=None,
              num_episodes=None
              ):
+    # 5_24 when is this function called?
     env_name = args.env_name
     if hasattr(args, 'test_env_name'):
         env_name = args.test_env_name
@@ -139,10 +141,45 @@ def visualise_behaviour(args,
                         compute_task_reconstruction_loss=None,
                         compute_state_reconstruction_loss=None,
                         compute_kl_loss=None,
+                        **kwargs,
                         ):
+
+    # TODO support load model
+    # TODO pass an argument to the vis_behaviour in each env, call the render method.
     # initialise environment
+
+    task_dir_name = os.path.join(os.path.join(
+        args.results_log_dir, 'logs_{}'.format(args.env_name), 'eval_traj_task_{}.npy'.format(args.seed)))
+
+    if iter_idx == -1:
+        # make env and sample_traj_task for evaluation
+        vis_trainingstep = np.arange(-1, int(
+            args.num_frames) // args.policy_num_steps // args.num_processes, args.vis_interval)
+
+        # save the task
+        # 暂且认为seed不同，task不同，所以存task的文件名要带上seed
+
+        env = make_vec_envs(env_name=args.env_name,
+                            # seed=args.seed * 42 + iter_idx,
+                            seed=iter_idx,  # 5_24 not sure setting this seed will get same task within same iter_idx
+                            num_processes=1,
+                            gamma=args.policy_gamma,
+                            device=device,
+                            episodes_per_task=args.max_rollouts_per_task,
+                            normalise_rew=args.norm_rew_for_policy, ret_rms=ret_rms,
+                            # not sure if the temp folders would otherwise clash
+                            rank_offset=args.num_processes + 42,
+                            tasks=tasks,
+                            given_task=False,
+                            task_dir_name=task_dir_name,
+                            vis_training_step=vis_trainingstep,
+                            )
+        env.close()
+
+    print('########### now evaluating !!!!!!!!!!')
     env = make_vec_envs(env_name=args.env_name,
-                        seed=args.seed * 42 + iter_idx,
+                        # seed=args.seed * 42 + iter_idx,
+                        seed=iter_idx,  # 5_24 not sure setting this seed will get same task within same iter_idx
                         num_processes=1,
                         gamma=args.policy_gamma,
                         device=device,
@@ -150,7 +187,11 @@ def visualise_behaviour(args,
                         normalise_rew=args.norm_rew_for_policy, ret_rms=ret_rms,
                         # not sure if the temp folders would otherwise clash
                         rank_offset=args.num_processes + 42,
-                        tasks=tasks)
+                        tasks=tasks,
+                        iter_idx=iter_idx,
+                        given_task=True,
+                        task_dir_name=task_dir_name,
+                        vis_training_step=None)
 
     # 5_13 update plot_vae_loss for changing tasks within one episode
     # 在 plot_vae_loss 里是有影响的，但是在 plot_behaviour 里没有影响
@@ -162,6 +203,8 @@ def visualise_behaviour(args,
     if hasattr(unwrapped_env, 'visualise_behaviour'):
         # if possible, get it from the env directly
         # (this might visualise other things in addition)
+        rendering = kwargs['rendering'] if 'rendering' in kwargs.keys(
+        ) else False
         traj = unwrapped_env.visualise_behaviour(env=env,
                                                  args=args,
                                                  policy=policy,
@@ -171,13 +214,17 @@ def visualise_behaviour(args,
                                                  state_decoder=state_decoder,
                                                  task_decoder=task_decoder,
                                                  image_folder=image_folder,
+                                                 rendering=rendering
                                                  )
     else:
         traj = get_test_rollout(args, env, policy, encoder)
 
-    latent_means, latent_logvars, episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, episode_returns, episode_tasks = traj
+    latent_means, latent_logvars, episode_prev_obs, episode_next_obs, episode_actions, episode_rewards, episode_tasks = traj
 
     if latent_means is not None:
+        latent_means = [_.detach().cpu() for _ in latent_means]
+        latent_logvars = [_.detach().cpu() for _ in latent_logvars]
+
         plot_latents(latent_means, latent_logvars,
                      image_folder=image_folder,
                      iter_idx=iter_idx
@@ -325,54 +372,67 @@ def plot_latents(latent_means,
     Plot mean/variance over time
     """
 
-    # XXX no latent means and logvars actually, cat them together and plot
-
-    num_rollouts = len(latent_means)
-    num_episode_steps = len(latent_means[0])
-
-    latent_means = torch.cat(latent_means).cpu().detach().numpy()
-    latent_logvars = torch.cat(latent_logvars).cpu().detach().numpy()
-
-    plt.figure(figsize=(12, 5))
-
-    # plt.subplot(1, 2, 1)
-    # plt.plot(range(latent_means.shape[0]), latent_means, '-', alpha=0.5)
-    # plt.plot(range(latent_means.shape[0]), latent_means.mean(axis=1), 'k-')
-    # for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
-    #     span = latent_means.max() - latent_means.min()
-    #     plt.plot([tj + 0.5, tj + 0.5],
-    #              [latent_means.min() - span * 0.05, latent_means.max() + span * 0.05],
-    #              'k--', alpha=0.5)
-    # plt.xlabel('env steps', fontsize=15)
-    # plt.ylabel('latent mean', fontsize=15)
-
-    # plt.subplot(1, 2, 2)
-    # latent_var = np.exp(latent_logvars)
-    # plt.plot(range(latent_logvars.shape[0]), latent_var, '-', alpha=0.5)
-    # plt.plot(range(latent_logvars.shape[0]), latent_var.mean(axis=1), 'k-')
-    # for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
-    #     span = latent_var.max() - latent_var.min()
-    #     plt.plot([tj + 0.5, tj + 0.5],
-    #              [latent_var.min() - span * 0.05, latent_var.max() + span * 0.05],
-    #              'k--', alpha=0.5)
-    # plt.xlabel('env steps', fontsize=15)
-    # plt.ylabel('latent variance', fontsize=15)
-    latent = np.concatenate([latent_means, latent_logvars], axis=1)
-    plt.plot(range(latent.shape[0]), latent, '-', alpha=0.5)
-    for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
-        span = latent_means.max() - latent_means.min()
-        plt.plot([tj + 0.5, tj + 0.5],
-                 [latent_means.min() - span * 0.05, latent_means.max() + span * 0.05],
-                 'k--', alpha=0.5)
-    plt.xlabel('env steps', fontsize=15)
-    plt.ylabel('latent', fontsize=15)
-
+    plt.figure(figsize=(18, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(np.stack(latent_means))
+    plt.title('latent mean')
+    plt.subplot(1, 2, 2)
+    plt.plot(np.exp(np.stack(latent_logvars)))
+    plt.title('latent var')
     plt.tight_layout()
     if image_folder is not None:
         plt.savefig('{}/{}_latents'.format(image_folder, iter_idx))
         plt.close('all')
     else:
         plt.show()
+
+    # num_rollouts = len(latent_means)
+    # num_episode_steps = len(latent_means[0])
+
+    # latent_means = torch.cat(latent_means).cpu().detach().numpy()
+    # latent_logvars = torch.cat(latent_logvars).cpu().detach().numpy()
+
+    # plt.figure(figsize=(12, 5))
+
+    # # plt.subplot(1, 2, 1)
+    # # plt.plot(range(latent_means.shape[0]), latent_means, '-', alpha=0.5)
+    # # plt.plot(range(latent_means.shape[0]), latent_means.mean(axis=1), 'k-')
+    # # for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
+    # #     span = latent_means.max() - latent_means.min()
+    # #     plt.plot([tj + 0.5, tj + 0.5],
+    # #              [latent_means.min() - span * 0.05, latent_means.max() + span * 0.05],
+    # #              'k--', alpha=0.5)
+    # # plt.xlabel('env steps', fontsize=15)
+    # # plt.ylabel('latent mean', fontsize=15)
+
+    # # plt.subplot(1, 2, 2)
+    # # latent_var = np.exp(latent_logvars)
+    # # plt.plot(range(latent_logvars.shape[0]), latent_var, '-', alpha=0.5)
+    # # plt.plot(range(latent_logvars.shape[0]), latent_var.mean(axis=1), 'k-')
+    # # for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
+    # #     span = latent_var.max() - latent_var.min()
+    # #     plt.plot([tj + 0.5, tj + 0.5],
+    # #              [latent_var.min() - span * 0.05, latent_var.max() + span * 0.05],
+    # #              'k--', alpha=0.5)
+    # # plt.xlabel('env steps', fontsize=15)
+    # # plt.ylabel('latent variance', fontsize=15)
+
+    # latent = np.concatenate([latent_means, latent_logvars], axis=1)
+    # plt.plot(range(latent.shape[0]), latent, '-', alpha=0.5)
+    # for tj in np.cumsum([0, *[num_episode_steps for _ in range(num_rollouts)]]):
+    #     span = latent_means.max() - latent_means.min()
+    #     plt.plot([tj + 0.5, tj + 0.5],
+    #              [latent_means.min() - span * 0.05, latent_means.max() + span * 0.05],
+    #              'k--', alpha=0.5)
+    # plt.xlabel('env steps', fontsize=15)
+    # plt.ylabel('latent', fontsize=15)
+
+    # plt.tight_layout()
+    # if image_folder is not None:
+    #     plt.savefig('{}/{}_latents'.format(image_folder, iter_idx))
+    #     plt.close('all')
+    # else:
+    #     plt.show()
 
 
 def plot_vae_loss(args,
