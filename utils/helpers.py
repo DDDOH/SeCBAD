@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from environments.parallel_envs import make_vec_envs
+# from environments.parallel_envs import make_vec_envs
 
 device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
@@ -352,28 +352,28 @@ def boolean_argument(value):
     return bool(strtobool(value))
 
 
-def get_task_dim(args):
-    env = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
-                        gamma=args.policy_gamma, device=device,
-                        episodes_per_task=args.max_rollouts_per_task,
-                        normalise_rew=args.norm_rew_for_policy, ret_rms=None,
-                        tasks=None
-                        )
-    return env.task_dim
+# def get_context_dim(args):
+#     env = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
+#                         gamma=args.policy_gamma, device=device,
+#                         episodes_per_task=args.max_rollouts_per_task,
+#                         normalise_rew=args.norm_rew_for_policy, ret_rms=None,
+#                         tasks=None
+#                         )
+#     return env.context_dim
 
 
-def get_num_tasks(args):
-    env = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
-                        gamma=args.policy_gamma, device=device,
-                        episodes_per_task=args.max_rollouts_per_task,
-                        normalise_rew=args.norm_rew_for_policy, ret_rms=None,
-                        tasks=None
-                        )
-    try:
-        num_tasks = env.num_tasks
-    except AttributeError:
-        num_tasks = None
-    return num_tasks
+# def get_num_tasks(args):
+#     env = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
+#                         gamma=args.policy_gamma, device=device,
+#                         episodes_per_task=args.max_rollouts_per_task,
+#                         normalise_rew=args.norm_rew_for_policy, ret_rms=None,
+#                         tasks=None
+#                         )
+#     try:
+#         num_tasks = env.num_tasks
+#     except AttributeError:
+#         num_tasks = None
+#     return num_tasks
 
 
 def clip(value, low, high):

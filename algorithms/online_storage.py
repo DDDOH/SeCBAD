@@ -18,14 +18,14 @@ def _flatten_helper(T, N, _tensor):
 class OnlineStorage(object):
     def __init__(self,
                  args, num_steps, num_processes,
-                 state_dim, belief_dim, task_dim,
+                 state_dim, belief_dim, context_dim,
                  action_space,
                  hidden_size, latent_dim, normalise_rewards, **kwargs):
 
         self.args = args
         self.state_dim = state_dim
         self.belief_dim = belief_dim
-        self.task_dim = task_dim
+        self.context_dim = context_dim
 
         # how many steps to do per update (= size of online buffer)
         self.num_steps = num_steps
@@ -61,7 +61,7 @@ class OnlineStorage(object):
         else:
             self.beliefs = None
         if self.args.pass_task_to_policy:
-            self.tasks = torch.zeros(num_steps + 1, num_processes, task_dim)
+            self.tasks = torch.zeros(num_steps + 1, num_processes, context_dim)
         else:
             self.tasks = None
 

@@ -9,7 +9,7 @@ import torch
 from algorithms.a2c import A2C
 from algorithms.online_storage import OnlineStorage
 from algorithms.ppo import PPO
-from environments.parallel_envs import make_vec_envs
+# from environments.parallel_envs import make_vec_envs
 from models.policy import Policy
 from utils import evaluation as utl_eval
 from utils import helpers as utl
@@ -76,7 +76,7 @@ class MetaLearner:
 
         # get policy input dimensions
         self.args.state_dim = self.envs.observation_space.shape[0]
-        self.args.task_dim = self.envs.task_dim
+        self.args.context_dim = self.envs.context_dim
         self.args.belief_dim = self.envs.belief_dim
         self.args.num_states = self.envs.num_states
         # get policy output (action) dimensions
@@ -98,7 +98,7 @@ class MetaLearner:
                              state_dim=self.args.state_dim,
                              latent_dim=self.args.latent_dim,
                              belief_dim=self.args.belief_dim,
-                             task_dim=self.args.task_dim,
+                             context_dim=self.args.context_dim,
                              action_space=self.args.action_space,
                              hidden_size=self.args.encoder_gru_hidden_size,
                              normalise_rewards=self.args.norm_rew_for_policy,
@@ -118,7 +118,7 @@ class MetaLearner:
             dim_state=self.args.state_dim,
             dim_latent=self.args.latent_dim * 2,
             dim_belief=self.args.belief_dim,
-            dim_task=self.args.task_dim,
+            dim_context=self.args.context_dim,
             #
             hidden_layers=self.args.policy_layers,
             activation_function=self.args.policy_activation_function,

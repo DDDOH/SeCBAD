@@ -1,19 +1,24 @@
-"""
-Main scripts to start experiments.
-Takes a flag --env-type (see below for choices) and loads the parameters from the respective config file.
-"""
-
 import argparse
 import warnings
 import numpy as np
 import torch
+import gym
+
+from non_envs.non_envs.mujoco.ant_dir import AntDir
+
+# import gym
+
+# envs = gym.vector.AsyncVectorEnv([
+#      lambda: AntDir(max_episode_steps=500),
+#      lambda: AntDir(max_episode_steps=500),
+#      lambda: AntDir(max_episode_steps=500)
+# ])
 
 import os
 
 import platform
 if platform.system() == 'Linux':
     os.environ['MUJOCO_GL'] = "egl"
-
 
 from config.mujoco import args_half_dir_non_varibad, args_half_dir_non_varibad_xt, args_half_dir_non_varibad_single, \
     args_half_dir_non_sacbad
@@ -27,16 +32,20 @@ from config.mujoco import args_ant_vel_non_varibad, args_ant_vel_non_varibad_xt,
     args_ant_vel_non_sacbad
 from config.mujoco import args_half_vel_non_sacbad
 
+from config import args_hvac_varibad
+
+
 ########################## archive ##########################
 # get configs
 from config.gridworld import \
     args_grid_belief_oracle, args_grid_rl2, args_grid_varibad, args_grid_nonstationary
-from config.pointrobot import \
-    args_pointrobot_multitask, args_pointrobot_varibad, args_pointrobot_rl2, args_pointrobot_humplik
+# from config.pointrobot import \
+#     args_pointrobot_multitask, args_pointrobot_varibad, args_pointrobot_rl2, args_pointrobot_humplik
 ########################## archive ##########################
 
 
-from environments.parallel_envs import make_vec_envs
+# from environments.parallel_envs import make_vec_envs
+# [ ] move learners into learners folder
 from learner import Learner
 from metalearner import MetaLearner
 from oracle_truncate_learner import OracleTruncateLearner
@@ -59,7 +68,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--env-type', default='args_ant_dir_non_varibad_single')
+        '--env-type', default='args_hvac_varibad')
 
     args, rest_args = parser.parse_known_args()
     env = args.env_type
@@ -115,22 +124,36 @@ def main():
 
     # begin training (loop through all passed seeds)
     seed_list = [args.seed] if isinstance(args.seed, int) else args.seed
+
+    # envs = gym.vector.AsyncVectorEnv([lambda: gym.make(
+    #     id=args.env_name, traj_len=args.max_episode_steps) for _ in range(args.num_processes)])
+
+    # envs = gym.vector.AsyncVectorEnv([
+    #     lambda: AntDir(traj_len=500),
+    #     lambda: AntDir(traj_len=500),
+    #     lambda: AntDir(traj_len=500)
+    # ])
+
     for seed in seed_list:
         print('training', seed)
         args.seed = seed
         args.action_space = None
 
-        # "select from ori, meta, orical_truncate, sacbad"
-        if args.learner_type == 'sacbad':
-            learner = AdaptiveLearner(args)
-        elif args.learner_type == 'varibad':
-            learner = MetaLearner(args)
-        elif args.learner_type == 'ori':
-            learner = Learner(args)
-        elif args.learner_type == 'oracle_truncate':
-            learner = OracleTruncateLearner(args)
-        else:
-            raise Exception("Invalid Learner Type")
+        # # "select from ori, meta, orical_truncate, sacbad"
+        # if args.learner_type == 'sacbad':
+        #     learner = AdaptiveLearner(args)
+        # elif args.learner_type == 'varibad':
+        #     learner = MetaLearner(args)
+        # elif args.learner_type == 'ori':
+        #     learner = Learner(args)
+        # elif args.learner_type == 'oracle_truncate':
+        #     learner = OracleTruncateLearner(args)
+        # else:
+        #     raise Exception("Invalid Learner Type")
+
+        # put all type learners together
+
+        learner = AdaptiveLearner(args)
 
         # if args has attribute visualize_model
         if hasattr(args, 'visualize_model') and args.visualize_model:

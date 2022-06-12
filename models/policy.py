@@ -34,12 +34,12 @@ class Policy(nn.Module):
                  # input
                  pass_state_to_policy,
                  pass_latent_to_policy,
-                 pass_belief_to_policy,
+                 #  pass_belief_to_policy,
                  pass_task_to_policy,
                  dim_state,
                  dim_latent,
-                 dim_belief,
-                 dim_task,
+                 #  dim_belief,
+                 dim_context,
                  # hidden
                  hidden_layers,
                  activation_function,  # tanh, relu, leaky-relu
@@ -77,7 +77,7 @@ class Policy(nn.Module):
         self.pass_state_to_policy = pass_state_to_policy
         self.pass_latent_to_policy = pass_latent_to_policy
         self.pass_task_to_policy = pass_task_to_policy
-        self.pass_belief_to_policy = pass_belief_to_policy
+        # self.pass_belief_to_policy = pass_belief_to_policy
 
         # set normalisation parameters for the inputs
         # (will be updated from outside using the RL batches)
@@ -89,19 +89,24 @@ class Policy(nn.Module):
             dim_latent is not None)
         if self.pass_latent_to_policy and self.norm_latent:
             self.latent_rms = utl.RunningMeanStd(shape=(dim_latent))
-        self.norm_belief = self.args.norm_belief_for_policy and (
-            dim_belief is not None)
-        if self.pass_belief_to_policy and self.norm_belief:
-            self.belief_rms = utl.RunningMeanStd(shape=(dim_belief))
+        # self.norm_belief = self.args.norm_belief_for_policy and (
+        #     dim_belief is not None)
+        # if self.pass_belief_to_policy and self.norm_belief:
+        #     self.belief_rms = utl.RunningMeanStd(shape=(dim_belief))
         self.norm_task = self.args.norm_task_for_policy and (
-            dim_task is not None)
+            dim_context is not None)
         if self.pass_task_to_policy and self.norm_task:
-            self.task_rms = utl.RunningMeanStd(shape=(dim_task))
+            self.task_rms = utl.RunningMeanStd(shape=(dim_context))
+
+        # curr_input_dim = dim_state * int(self.pass_state_to_policy) + \
+        #     dim_latent * int(self.pass_latent_to_policy) + \
+        #     dim_belief * int(self.pass_belief_to_policy) + \
+        #     dim_context * int(self.pass_task_to_policy)
 
         curr_input_dim = dim_state * int(self.pass_state_to_policy) + \
             dim_latent * int(self.pass_latent_to_policy) + \
-            dim_belief * int(self.pass_belief_to_policy) + \
-            dim_task * int(self.pass_task_to_policy)
+            dim_context * int(self.pass_task_to_policy)
+
         # initialise encoders for separate inputs
         self.use_state_encoder = self.args.policy_state_embedding_dim is not None
         if self.pass_state_to_policy and self.use_state_encoder:
@@ -116,16 +121,17 @@ class Policy(nn.Module):
             curr_input_dim = curr_input_dim - dim_latent + \
                 self.args.policy_latent_embedding_dim
         self.use_belief_encoder = self.args.policy_belief_embedding_dim is not None
-        if self.pass_belief_to_policy and self.use_belief_encoder:
-            self.belief_encoder = utl.FeatureExtractor(
-                dim_belief, self.args.policy_belief_embedding_dim, self.activation_function)
-            curr_input_dim = curr_input_dim - dim_belief + \
-                self.args.policy_belief_embedding_dim
+        # if self.pass_belief_to_policy and self.use_belief_encoder:
+        #     self.belief_encoder = utl.FeatureExtractor(
+        #         dim_belief, self.args.policy_belief_embedding_dim, self.activation_function)
+        #     curr_input_dim = curr_input_dim - dim_belief + \
+        #         self.args.policy_belief_embedding_dim
         self.use_task_encoder = self.args.policy_task_embedding_dim is not None
         if self.pass_task_to_policy and self.use_task_encoder:
             self.task_encoder = utl.FeatureExtractor(
-                dim_task, self.args.policy_task_embedding_dim, self.activation_function)
-            curr_input_dim = curr_input_dim - dim_task + self.args.policy_task_embedding_dim
+                dim_context, self.args.policy_task_embedding_dim, self.activation_function)
+            curr_input_dim = curr_input_dim - dim_context + \
+                self.args.policy_task_embedding_dim
 
         # initialise actor and critic
         hidden_layers = [int(h) for h in hidden_layers]
@@ -195,14 +201,14 @@ class Policy(nn.Module):
                 latent = self.latent_encoder(latent)
         else:
             latent = torch.zeros(0, ).to(device)
-        if self.pass_belief_to_policy:
-            if self.norm_belief:
-                belief = (belief - self.belief_rms.mean) / \
-                    torch.sqrt(self.belief_rms.var + 1e-8)
-            if self.use_belief_encoder:
-                belief = self.belief_encoder(belief.float())
-        else:
-            belief = torch.zeros(0, ).to(device)
+        # if self.pass_belief_to_policy:
+        #     if self.norm_belief:
+        #         belief = (belief - self.belief_rms.mean) / \
+        #             torch.sqrt(self.belief_rms.var + 1e-8)
+        #     if self.use_belief_encoder:
+        #         belief = self.belief_encoder(belief.float())
+        # else:
+        #     belief = torch.zeros(0, ).to(device)
         if self.pass_task_to_policy:
             if self.norm_task:
                 task = (task - self.task_rms.mean) / \

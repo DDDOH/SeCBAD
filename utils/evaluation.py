@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import os
 
-from environments.parallel_envs import make_vec_envs
+# from environments.parallel_envs import make_vec_envs
 from utils import helpers as utl
 
 device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")

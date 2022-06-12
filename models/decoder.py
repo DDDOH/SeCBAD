@@ -63,8 +63,8 @@ class RewardDecoder(nn.Module):
                  action_embed_dim,
                  state_dim,
                  state_embed_dim,
-                 num_states,
-                 multi_head=False,
+                 #  num_states,
+                 #  multi_head=False,
                  pred_type='deterministic',
                  input_prev_state=True,
                  input_action=True,
@@ -74,41 +74,41 @@ class RewardDecoder(nn.Module):
         self.args = args
 
         self.pred_type = pred_type
-        self.multi_head = multi_head
+        # self.multi_head = multi_head
         self.input_prev_state = input_prev_state
         self.input_action = input_action
 
-        if self.multi_head:
-            # one output head per state to predict rewards
-            curr_input_dim = latent_dim
-            self.fc_layers = nn.ModuleList([])
-            for i in range(len(layers)):
-                self.fc_layers.append(nn.Linear(curr_input_dim, layers[i]))
-                curr_input_dim = layers[i]
-            self.fc_out = nn.Linear(curr_input_dim, num_states)
+        # if self.multi_head:
+        #     # one output head per state to predict rewards
+        #     curr_input_dim = latent_dim
+        #     self.fc_layers = nn.ModuleList([])
+        #     for i in range(len(layers)):
+        #         self.fc_layers.append(nn.Linear(curr_input_dim, layers[i]))
+        #         curr_input_dim = layers[i]
+        #     self.fc_out = nn.Linear(curr_input_dim, num_states)
+        # else:
+        # get state as input and predict reward prob
+        self.state_encoder = utl.FeatureExtractor(
+            state_dim, state_embed_dim, F.relu)
+        if self.input_action:
+            self.action_encoder = utl.FeatureExtractor(
+                action_dim, action_embed_dim, F.relu)
         else:
-            # get state as input and predict reward prob
-            self.state_encoder = utl.FeatureExtractor(
-                state_dim, state_embed_dim, F.relu)
-            if self.input_action:
-                self.action_encoder = utl.FeatureExtractor(
-                    action_dim, action_embed_dim, F.relu)
-            else:
-                self.action_encoder = None
-            curr_input_dim = latent_dim + state_embed_dim
-            if input_prev_state:
-                curr_input_dim += state_embed_dim
-            if input_action:
-                curr_input_dim += action_embed_dim
-            self.fc_layers = nn.ModuleList([])
-            for i in range(len(layers)):
-                self.fc_layers.append(nn.Linear(curr_input_dim, layers[i]))
-                curr_input_dim = layers[i]
+            self.action_encoder = None
+        curr_input_dim = latent_dim + state_embed_dim
+        if input_prev_state:
+            curr_input_dim += state_embed_dim
+        if input_action:
+            curr_input_dim += action_embed_dim
+        self.fc_layers = nn.ModuleList([])
+        for i in range(len(layers)):
+            self.fc_layers.append(nn.Linear(curr_input_dim, layers[i]))
+            curr_input_dim = layers[i]
 
-            if pred_type == 'gaussian':
-                self.fc_out = nn.Linear(curr_input_dim, 2)
-            else:
-                self.fc_out = nn.Linear(curr_input_dim, 1)
+        if pred_type == 'gaussian':
+            self.fc_out = nn.Linear(curr_input_dim, 2)
+        else:
+            self.fc_out = nn.Linear(curr_input_dim, 1)
 
     def forward(self, latent_state, next_state, prev_state=None, actions=None):
 
@@ -139,8 +139,8 @@ class TaskDecoder(nn.Module):
                  layers,
                  latent_dim,
                  pred_type,
-                 task_dim,
-                 num_tasks,
+                 context_dim,
+                 #  num_tasks,
                  ):
         super(TaskDecoder, self).__init__()
 
@@ -153,7 +153,8 @@ class TaskDecoder(nn.Module):
             self.fc_layers.append(nn.Linear(curr_input_dim, layers[i]))
             curr_input_dim = layers[i]
 
-        output_dim = task_dim if pred_type == 'task_description' else num_tasks
+        # output_dim = context_dim if pred_type == 'task_description' else num_tasks
+        output_dim = context_dim
         self.fc_out = nn.Linear(curr_input_dim, output_dim)
 
     def forward(self, latent_state):

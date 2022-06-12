@@ -6,7 +6,7 @@ device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 class RolloutStorageVAE(object):
     def __init__(self, num_processes, max_trajectory_len, zero_pad, max_num_rollouts,
-                 state_dim, action_dim, vae_buffer_add_thresh, task_dim):
+                 state_dim, action_dim, vae_buffer_add_thresh, context_dim):
         """
         Store everything that is needed for the VAE update
         :param num_processes:
@@ -14,7 +14,7 @@ class RolloutStorageVAE(object):
 
         self.obs_dim = state_dim
         self.action_dim = action_dim
-        self.task_dim = task_dim
+        self.context_dim = context_dim
 
         # prob of adding new trajectories
         self.vae_buffer_add_thresh = vae_buffer_add_thresh
@@ -41,10 +41,10 @@ class RolloutStorageVAE(object):
                 (self.max_traj_len, self.max_buffer_size, 1))
             self.r_ts = torch.zeros(
                 (self.max_traj_len, self.max_buffer_size, 1))
-            if task_dim is not None:
-                self.tasks = torch.zeros((self.max_buffer_size, task_dim))
+            if context_dim is not None:
+                self.tasks = torch.zeros((self.max_buffer_size, context_dim))
                 self.nonstationary_tasks = torch.zeros(
-                    (self.max_traj_len, self.max_buffer_size, task_dim))
+                    (self.max_traj_len, self.max_buffer_size, context_dim))
             else:
                 self.tasks = None
                 self.nonstationary_tasks = None
@@ -65,11 +65,11 @@ class RolloutStorageVAE(object):
         self.running_actions = torch.zeros(
             (self.max_traj_len, num_processes, action_dim)).to(device)
 
-        if task_dim is not None:
+        if context_dim is not None:
             self.running_tasks = torch.zeros(
-                (num_processes, task_dim)).to(device)
+                (num_processes, context_dim)).to(device)
             self.running_nonstationary_tasks = torch.zeros(
-                (self.max_traj_len, num_processes, task_dim)).to(device)
+                (self.max_traj_len, num_processes, context_dim)).to(device)
         else:
             self.running_tasks = None
             self.running_nonstationary_tasks = None

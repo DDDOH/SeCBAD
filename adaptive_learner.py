@@ -1,5 +1,7 @@
+from environments.env_utils import VectorEnv, SegmentContextDist, NonstationaryContext
 import os
 import time
+import non_envs
 
 import gym
 import numpy as np
@@ -8,7 +10,7 @@ import torch
 from algorithms.a2c import A2C
 from algorithms.adaptive_online_storage import AdaptiveOnlineStorage
 from algorithms.ppo import PPO
-from environments.parallel_envs import make_vec_envs
+# from environments.parallel_envs import make_vec_envs
 from models.policy import Policy
 from utils import evaluation as utl_eval
 from utils import helpers as utl
@@ -49,53 +51,71 @@ class AdaptiveLearner:
         # initialise tensorboard logger
         self.logger = TBLogger(self.args, self.args.exp_label)
 
-        # initialise environments
-        self.envs = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
-                                  gamma=args.policy_gamma, device=device,
-                                  episodes_per_task=self.args.max_rollouts_per_task,
-                                  normalise_rew=args.norm_rew_for_policy, ret_rms=None,
-                                  tasks=None
-                                  )
+        # [ ] use SyncVectorEnv, AsyncVectorEnv will raise Pickle error. Fix it (or simply use the SyncVectorEnv instead?)
+        # self.envs = gym.vector.AsyncVectorEnv([lambda: gym.make(
+        #     id=args.env_name, traj_len=self.args.max_episode_steps) for _ in range(self.args.num_processes)])
+        self.envs = VectorEnv(env_name=self.args.env_name,
+                              n_env=self.args.num_processes, traj_len=self.args.traj_len)
+        # id=args.env_name, num_envs=args.num_processes, max_episode_steps=self.args.max_episode_steps)
 
-        if self.args.single_task_mode:
-            # get the current tasks (which will be num_process many different tasks)
-            self.train_tasks = self.envs.get_task()
-            # set the tasks to the first task (i.e. just a random task)
-            self.train_tasks[1:] = self.train_tasks[0]
-            # make it a list
-            self.train_tasks = [t for t in self.train_tasks]
-            # re-initialise environments with those tasks
-            self.envs = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
-                                      gamma=args.policy_gamma, device=device,
-                                      episodes_per_task=self.args.max_rollouts_per_task,
-                                      normalise_rew=args.norm_rew_for_policy, ret_rms=None,
-                                      tasks=self.train_tasks
-                                      )
-            # save the training tasks so we can evaluate on the same envs later
-            utl.save_obj(self.train_tasks,
-                         self.logger.full_output_folder, "train_tasks")
-        else:
-            self.train_tasks = None
+        # gamma=args.policy_gamma: discount factor for rewards
+        # initialise environments
+        # self.envs = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
+        #                           gamma=args.policy_gamma, device=device,
+        #                           episodes_per_task=self.args.max_rollouts_per_task,
+        #                           normalise_rew=args.norm_rew_for_policy, ret_rms=None,
+        #                           tasks=None
+        #                           )
+
+        # if self.args.single_task_mode:
+        #     # get the current tasks (which will be num_process many different tasks)
+        #     self.train_tasks = self.envs.get_task()
+        #     # set the tasks to the first task (i.e. just a random task)
+        #     self.train_tasks[1:] = self.train_tasks[0]
+        #     # make it a list
+        #     self.train_tasks = [t for t in self.train_tasks]
+        #     # re-initialise environments with those tasks
+        #     self.envs = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes,
+        #                               gamma=args.policy_gamma, device=device,
+        #                               episodes_per_task=self.args.max_rollouts_per_task,
+        #                               normalise_rew=args.norm_rew_for_policy, ret_rms=None,
+        #                               tasks=self.train_tasks
+        #                               )
+        #     # save the training tasks so we can evaluate on the same envs later
+        #     utl.save_obj(self.train_tasks,
+        #                  self.logger.full_output_folder, "train_tasks")
+        # else:
+        #     self.train_tasks = None
 
         # calculate what the maximum length of the trajectories is
         # num of steps per episode # default 200 for girdworld_nonstationary
-        self.args.max_trajectory_len = self.envs._max_episode_steps
-        self.args.max_trajectory_len *= self.args.max_rollouts_per_task
+
+        # self.args.max_trajectory_len = self.envs.traj_len
+        # self.args.max_trajectory_len *= self.args.max_rollouts_per_task
 
         # get policy input dimensions
-        self.args.state_dim = self.envs.observation_space.shape[0]
-        self.args.task_dim = self.envs.task_dim
-        self.args.belief_dim = self.envs.belief_dim
-        self.args.num_states = self.envs.num_states
+        # self.args.state_dim = self.envs.observation_space.shape[0]
+        # self.args.context_dim = self.envs.context_dim
+        # self.args.belief_dim = self.envs.belief_dim
+        # self.args.num_states = self.envs.num_states
         # get policy output (action) dimensions
-        self.args.action_space = self.envs.action_space
-        if isinstance(self.envs.action_space, gym.spaces.discrete.Discrete):
-            self.args.action_dim = 1
-        else:
-            self.args.action_dim = self.envs.action_space.shape[0]
+        # self.args.action_space = self.envs.action_space
+        # if isinstance(self.envs.action_space, gym.spaces.discrete.Discrete):
+        #     self.args.action_dim = 1
+        # else:
+        #     self.args.action_dim = self.envs.action_space.shape[0]
+
+        env_paras = self.envs.get_env_paras()
+
+        self.args.action_dim = env_paras['dim_action']
+        self.args.state_dim = env_paras['dim_state']
+        self.args.context_dim = env_paras['dim_context']
+        self.args.max_trajectory_len = env_paras['max_trajectory_len']
+        self.args.action_space = env_paras['action_space']
 
         # initialise VAE and policy
-        self.vae = VaribadVAE(self.args, self.logger, lambda: self.iter_idx)
+        self.vae = VaribadVAE(
+            self.args, self.logger, lambda: self.iter_idx, env_paras['dim_context'])
         self.policy_storage = self.initialise_policy_storage()
         self.policy = self.initialise_policy()
 
@@ -107,8 +127,8 @@ class AdaptiveLearner:
                                      num_processes=self.args.num_processes,
                                      state_dim=self.args.state_dim,
                                      latent_dim=self.args.latent_dim,
-                                     belief_dim=self.args.belief_dim,
-                                     task_dim=self.args.task_dim,
+                                     #  belief_dim=self.args.belief_dim,
+                                     context_dim=self.args.context_dim,
                                      action_space=self.args.action_space,
                                      hidden_size=self.args.encoder_gru_hidden_size,
                                      normalise_rewards=self.args.norm_rew_for_policy,
@@ -123,18 +143,18 @@ class AdaptiveLearner:
             #
             pass_state_to_policy=self.args.pass_state_to_policy,
             pass_latent_to_policy=self.args.pass_latent_to_policy,
-            pass_belief_to_policy=self.args.pass_belief_to_policy,
+            # pass_belief_to_policy=self.args.pass_belief_to_policy,
             pass_task_to_policy=self.args.pass_task_to_policy,
             dim_state=self.args.state_dim,
             dim_latent=self.args.latent_dim * 2,
-            dim_belief=self.args.belief_dim,
-            dim_task=self.args.task_dim,
+            # dim_belief=self.args.belief_dim,
+            dim_context=self.args.context_dim,
             #
             hidden_layers=self.args.policy_layers,
             activation_function=self.args.policy_activation_function,
             policy_initialisation=self.args.policy_initialisation,
             #
-            action_space=self.envs.action_space,
+            action_space=self.envs.get_env_paras()['action_space'],
             init_std=self.args.policy_init_std,
         ).to(device)
 
@@ -194,14 +214,13 @@ class AdaptiveLearner:
         return policy
 
     def visualize(self):
-        
 
         visualize_index = self.args.visualize_index
         if visualize_index is None or (not os.path.exists(os.path.join(
                 self.args.model_dir, 'policy{}.pt'.format(visualize_index)))):
             print('Incorrect visualize_index or None, use the lastest policy')
             visualize_index = max([int(f[len('policy'):-len('.pt')]) for f in os.listdir(self.args.model_dir) if
-                            (f.startswith('policy')) and len(f)>len('policy')+len('.pt')])
+                                   (f.startswith('policy')) and len(f) > len('policy')+len('.pt')])
 
         if self.args.norm_rew_for_policy:
             ret_rms = utl.load_obj(
@@ -216,9 +235,9 @@ class AdaptiveLearner:
         if self.policy.actor_critic.pass_latent_to_policy and self.policy.actor_critic.norm_latent:
             self.policy.actor_critic.latent_rms = utl.load_obj(
                 self.args.model_dir, "env_latent_rms{}".format(visualize_index))
-        if self.policy.actor_critic.pass_belief_to_policy and self.policy.actor_critic.norm_belief:
-            self.policy.actor_critic.belief_rms = utl.load_obj(
-                self.args.model_dir, "env_belief_rms{}".format(visualize_index))
+        # if self.policy.actor_critic.pass_belief_to_policy and self.policy.actor_critic.norm_belief:
+        #     self.policy.actor_critic.belief_rms = utl.load_obj(
+        #         self.args.model_dir, "env_belief_rms{}".format(visualize_index))
         if self.policy.actor_critic.pass_task_to_policy and self.policy.actor_critic.norm_task:
             self.policy.actor_critic.task_rms = utl.load_obj(
                 self.args.model_dir, "env_task_rms{}".format(visualize_index))
@@ -251,15 +270,20 @@ class AdaptiveLearner:
                                                )
 
     def train(self):
-        # TODO truncate at right place
         """ Main Meta-Training loop """
         start_time = time.time()
 
+        non_context = NonstationaryContext(
+            traj_length=self.envs.traj_len, get_context_length=lambda: int(max(np.random.normal(80, 10), 20)), get_context_distribution=self.envs.env.get_context_distribution)
+        traj_context = non_context.sample_traj_context(self.envs.n_env)
+
+        init_obs = self.envs.reset(traj_context_ls=traj_context)
+
         # reset environments
-        prev_state, belief, task, info = utl.reset_env(self.envs, self.args)
+        # prev_state, belief, task, info = utl.reset_env(self.envs, self.args)
 
         # insert initial observation / embeddings to rollout storage
-        self.policy_storage.prev_state[0].copy_(prev_state)
+        self.policy_storage.prev_state[0].copy_(torch.tensor(init_obs))
 
         # log once before training
         with torch.no_grad():
@@ -389,7 +413,7 @@ class AdaptiveLearner:
                 else:
                     self.policy_storage.insert(
                         state=next_state,
-                        belief=belief,
+                        # belief=belief,
                         task=task,
                         actions=action,
                         rewards_raw=rew_raw,

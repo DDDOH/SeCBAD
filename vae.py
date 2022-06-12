@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from models.decoder import StateTransitionDecoder, RewardDecoder, TaskDecoder
 from models.encoder import RNNEncoder
-from utils.helpers import get_task_dim, get_num_tasks
+# from utils.helpers import get_context_dim, get_num_tasks
 from utils.storage_vae import RolloutStorageVAE
 
 device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
@@ -22,15 +22,14 @@ class VaribadVAE:
     - can update the VAE (encoder+decoder)
     """
 
-    def __init__(self, args, logger, get_iter_idx):
+    def __init__(self, args, logger, get_iter_idx, context_dim):
 
         self.args = args
         self.logger = logger
         self.get_iter_idx = get_iter_idx
-        self.task_dim = get_task_dim(
-            self.args) if self.args.decode_task else None
-        self.num_tasks = get_num_tasks(
-            self.args) if self.args.decode_task else None
+        self.context_dim = context_dim if self.args.decode_task else None
+        # self.num_tasks = get_num_tasks(
+        #     self.args) if self.args.decode_task else None
 
         # initialise the encoder
         self.encoder = self.initialise_encoder()
@@ -48,7 +47,7 @@ class VaribadVAE:
                                                  action_dim=self.args.action_dim,
                                                  # probability of adding a new trajectory to buffer
                                                  vae_buffer_add_thresh=self.args.vae_buffer_add_thresh,
-                                                 task_dim=self.task_dim
+                                                 context_dim=self.context_dim
                                                  )
 
         # initalise optimiser for the encoder and decoders
@@ -116,8 +115,8 @@ class VaribadVAE:
                 state_embed_dim=self.args.state_embedding_size,
                 action_dim=self.args.action_dim,
                 action_embed_dim=self.args.action_embedding_size,
-                num_states=self.args.num_states,
-                multi_head=self.args.multihead_for_reward,
+                # num_states=self.args.num_states,
+                # multi_head=self.args.multihead_for_reward,
                 pred_type=self.args.rew_pred_type,
                 input_prev_state=self.args.input_prev_state,
                 input_action=self.args.input_action,
@@ -127,12 +126,12 @@ class VaribadVAE:
 
         # initialise task decoder for VAE
         if self.args.decode_task:
-            assert self.task_dim != 0
+            assert self.context_dim != 0
             task_decoder = TaskDecoder(
                 latent_dim=latent_dim,
                 layers=self.args.task_decoder_layers,
-                task_dim=self.task_dim,
-                num_tasks=self.num_tasks,
+                context_dim=self.context_dim,
+                # num_tasks=self.num_tasks,
                 pred_type=self.args.task_pred_type,
             ).to(device)
         else:

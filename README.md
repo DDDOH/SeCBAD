@@ -2,10 +2,11 @@
 
 
 - [ ] visualize behavior (rendering video)
-
 - [ ] remove warnings
 - [ ] use gym implemented vector_env https://github.com/openai/gym/blob/a6274a55f04a31ecc0edf9f72de687d74bc1783d/gym/vector/vector_env.py
 - [ ] update all mujoco env to newest gym version
+- [ ] 
+- [ ] HVAC env
 - [ ] update README
 
 

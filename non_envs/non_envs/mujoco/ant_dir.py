@@ -6,13 +6,12 @@ rewrite step and reset_model to support nonstationary tasks
 
 import numpy as np
 from gym.envs.mujoco.ant_v4 import AntEnv
-# from ..env_utils import SegmentContextDist, NonstationaryContext
 import gym
 import skvideo.io
 # what we expect the env to do
 # while training:
 #   [ ] multi threading
-#   [x] accept trajectory task when reset env
+#   [ ] accept trajectory task when reset env
 # while evaluating:
 #   [x] single threading
 #   [x] accept trajectory task when reset env (randomly chosen or read from files)
@@ -23,7 +22,7 @@ import skvideo.io
 
 
 class AntDir(AntEnv):
-    def __init__(self, traj_len, id=None):
+    def __init__(self, traj_len):
         # https://www.runoob.com/w3cnote/python-extends-init.html
         self.init_parent = False  # whether AntEnv has been initialized
         """
@@ -39,9 +38,7 @@ class AntDir(AntEnv):
         """
         AntEnv.__init__(self)
         self.init_parent = True  # whether AntEnv has been initialized
-        self.id = id  # when multiple environments are created in VectorEnvs, the id is used to distinguish them
         self.traj_len = traj_len
-        self.dim_context = 1
 
     # rewrite step function to recompute the reward function
 
@@ -121,15 +118,12 @@ class AntDir(AntEnv):
 
         return observation
 
-    def reset(self, options, seed=None):
-        # print(options)
-        observation = super(AntEnv, self).reset(seed=seed)
-        traj_context = options['traj_context'][self.id]
+    def reset(self, seed, traj_context=None):
         assert self.traj_len == len(
             traj_context), "traj_context length must be equal to max_episode_steps"
+        super(AntEnv, self).reset(seed=seed)
         self.traj_context = traj_context
         self.traj_step = 0
-        return observation
 
     @staticmethod
     def get_context_distribution():
@@ -144,6 +138,48 @@ class AntDir(AntEnv):
         return get_context
 
 
+class SegmentContextDist():
+    def __init__(self, sample_func, message=''):
+        self.sample_func = sample_func
+        self.message = ''
+
+    def sample(self, length):
+        return self.sample_func(length)
+
+    def __repr__(self) -> str:
+        return self.message
+
+
+class NonstationaryContext():
+    def __init__(self, traj_length, get_context_length, get_context_distribution):
+        # traj_length: the length of the trajectory
+        # context_length_sampler: a function that returns a random length, within these steps, context keep unchanged
+
+        self.traj_length = traj_length
+        self.get_context_length = get_context_length
+        self.get_context_distribution = get_context_distribution
+
+    def sample_traj_context(self):
+        filled_length = 0
+        traj_context = []
+
+        context_length = self.get_context_length()
+        context_distribution = self.get_context_distribution()
+
+        while True:
+            segment_context = context_distribution(context_length)
+            traj_context.append(segment_context)
+            filled_length += context_length
+
+            if filled_length > self.traj_length:
+                break
+
+            context_length = self.get_context_length()
+            context_distribution = self.get_context_distribution()
+
+        return np.concatenate(traj_context)[:self.traj_length]
+
+
 def diff_ratio(array_1, array_2):
     assert array_1.shape == array_2.shape
     return np.sum(array_1 - array_2) / array_1.size
@@ -153,55 +189,57 @@ def array_to_video(rgb_array, video_path_name):
     skvideo.io.vwrite(video_path_name + '.mp4', rgb_array)
 
 
-# if __name__ == '__main__':
 
-#     traj_len = 500
-#     env = AntDir(traj_len=traj_len)
+if __name__ == '__main__':
 
-#     # vec_env = gym.vector.AsyncVectorEnv([lambda: gym.make(
-#     #     id='non_envs/AntDir-v4', traj_len=100) for _ in range(3)])
+    traj_len = 500
+    env = AntDir(traj_len=traj_len)
 
-#     vec_env = gym.vector.AsyncVectorEnv(
-#         [lambda: AntDir(traj_len=traj_len) for _ in range(5)])
+    def get_context_length():
+        return int(max(np.random.normal(80, 20), 10))
 
-#     def get_context_length():
-#         return int(max(np.random.normal(80, 20), 10))
+    non_context = NonstationaryContext(
+        traj_length=traj_len, get_context_length=get_context_length, get_context_distribution=AntDir.get_context_distribution)
+    traj_context = non_context.sample_traj_context()
 
-#     non_context = NonstationaryContext(
-#         traj_length=traj_len, get_context_length=get_context_length, get_context_distribution=AntDir.get_context_distribution)
-#     traj_context = non_context.sample_traj_context()
+    env.reset(traj_context=traj_context, seed=10)
+    env.action_space.seed(seed=10)
+    render_rec_1 = []
+    obs_rec_1 = []
+    reward_rec_1 = []
+    for _ in range(traj_len):
+        observation, reward, done, info = env.step(env.action_space.sample())
+        render_rec_1.append(env.render(mode='rgb_array'))
+        obs_rec_1.append(observation)
+        reward_rec_1.append(reward)
 
-#     env.reset(traj_context=traj_context, seed=10)
-#     env.action_space.seed(seed=10)
-#     render_rec_1 = []
-#     obs_rec_1 = []
-#     reward_rec_1 = []
-#     for _ in range(traj_len):
-#         observation, reward, done, info = env.step(env.action_space.sample())
-#         render_rec_1.append(env.render(mode='rgb_array'))
-#         obs_rec_1.append(observation)
-#         reward_rec_1.append(reward)
+    env.reset(traj_context=traj_context, seed=10)
+    env.action_space.seed(seed=10)
+    render_rec_2 = []
+    obs_rec_2 = []
+    reward_rec_2 = []
+    for _ in range(traj_len):
+        observation, reward, done, info = env.step(env.action_space.sample())
+        render_rec_2.append(env.render(mode='rgb_array'))
+        obs_rec_2.append(observation)
+        reward_rec_2.append(reward)
 
-#     env.reset(traj_context=traj_context, seed=10)
-#     env.action_space.seed(seed=10)
-#     render_rec_2 = []
-#     obs_rec_2 = []
-#     reward_rec_2 = []
-#     for _ in range(traj_len):
-#         observation, reward, done, info = env.step(env.action_space.sample())
-#         render_rec_2.append(env.render(mode='rgb_array'))
-#         obs_rec_2.append(observation)
-#         reward_rec_2.append(reward)
+    render_rec_1 = np.array(render_rec_1)
+    render_rec_2 = np.array(render_rec_2)
+    obs_rec_1 = np.array(obs_rec_1)
+    obs_rec_2 = np.array(obs_rec_2)
+    reward_rec_1 = np.array(reward_rec_1)
+    reward_rec_2 = np.array(reward_rec_2)
+    print(diff_ratio(render_rec_1, render_rec_2))
+    print(diff_ratio(obs_rec_1, obs_rec_2))
+    print(diff_ratio(reward_rec_1, reward_rec_2))
 
-#     render_rec_1 = np.array(render_rec_1)
-#     render_rec_2 = np.array(render_rec_2)
-#     obs_rec_1 = np.array(obs_rec_1)
-#     obs_rec_2 = np.array(obs_rec_2)
-#     reward_rec_1 = np.array(reward_rec_1)
-#     reward_rec_2 = np.array(reward_rec_2)
-#     print(diff_ratio(render_rec_1, render_rec_2))
-#     print(diff_ratio(obs_rec_1, obs_rec_2))
-#     print(diff_ratio(reward_rec_1, reward_rec_2))
+    array_to_video(render_rec_1, 'render_rec_1')
+    array_to_video(render_rec_2, 'render_rec_2')
 
-#     array_to_video(render_rec_1, 'render_rec_1')
-#     array_to_video(render_rec_2, 'render_rec_2')
+
+
+    vec_env = gym.vector.AsyncVectorEnv(
+        [lambda: AntDir(traj_len=traj_len) for _ in range(5)])
+
+    
