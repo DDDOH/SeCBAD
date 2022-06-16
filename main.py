@@ -2,17 +2,7 @@ import argparse
 import warnings
 import numpy as np
 import torch
-import gym
-
-from non_envs.non_envs.mujoco.ant_dir import AntDir
-
-# import gym
-
-# envs = gym.vector.AsyncVectorEnv([
-#      lambda: AntDir(max_episode_steps=500),
-#      lambda: AntDir(max_episode_steps=500),
-#      lambda: AntDir(max_episode_steps=500)
-# ])
+from secbad.environments.mujoco.ant_dir import AntDir
 
 import os
 
@@ -20,24 +10,24 @@ import platform
 if platform.system() == 'Linux':
     os.environ['MUJOCO_GL'] = "egl"
 
-from config.mujoco import args_half_dir_non_varibad, args_half_dir_non_varibad_xt, args_half_dir_non_varibad_single, \
+from secbad.config.mujoco import args_half_dir_non_varibad, args_half_dir_non_varibad_xt, args_half_dir_non_varibad_single, \
     args_half_dir_non_sacbad
-from config.mujoco import args_half_goal_non_varibad, args_half_goal_non_varibad_xt, args_half_goal_non_varibad_single, \
+from secbad.config.mujoco import args_half_goal_non_varibad, args_half_goal_non_varibad_xt, args_half_goal_non_varibad_single, \
     args_half_goal_non_sacbad
-from config.mujoco import args_ant_goal_non_varibad, args_ant_goal_non_varibad_xt, args_ant_goal_non_varibad_single, \
+from secbad.config.mujoco import args_ant_goal_non_varibad, args_ant_goal_non_varibad_xt, args_ant_goal_non_varibad_single, \
     args_ant_goal_non_sacbad
-from config.mujoco import args_ant_dir_non_varibad, args_ant_dir_non_varibad_xt, args_ant_dir_non_varibad_single, \
+from secbad.config.mujoco import args_ant_dir_non_varibad, args_ant_dir_non_varibad_xt, args_ant_dir_non_varibad_single, \
     args_ant_dir_non_sacbad
-from config.mujoco import args_ant_vel_non_varibad, args_ant_vel_non_varibad_xt, args_ant_vel_non_varibad_single, \
+from secbad.config.mujoco import args_ant_vel_non_varibad, args_ant_vel_non_varibad_xt, args_ant_vel_non_varibad_single, \
     args_ant_vel_non_sacbad
-from config.mujoco import args_half_vel_non_sacbad
+from secbad.config.mujoco import args_half_vel_non_sacbad
 
-from config import args_hvac_varibad
+from secbad.config import args_hvac_varibad
 
 
 ########################## archive ##########################
 # get configs
-from config.gridworld import \
+from secbad.config.gridworld import \
     args_grid_belief_oracle, args_grid_rl2, args_grid_varibad, args_grid_nonstationary
 # from config.pointrobot import \
 #     args_pointrobot_multitask, args_pointrobot_varibad, args_pointrobot_rl2, args_pointrobot_humplik
@@ -46,10 +36,10 @@ from config.gridworld import \
 
 # from environments.parallel_envs import make_vec_envs
 # [ ] move learners into learners folder
-from learner import Learner
-from metalearner import MetaLearner
-from oracle_truncate_learner import OracleTruncateLearner
-from adaptive_learner import AdaptiveLearner
+from secbad.learner import Learner
+from secbad.metalearner import MetaLearner
+from secbad.oracle_truncate_learner import OracleTruncateLearner
+from secbad.adaptive_learner import AdaptiveLearner
 
 
 def main():
