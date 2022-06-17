@@ -1,5 +1,5 @@
 # TODO put this into a more appropriate place
-# from adaptivelearner import get_r_t
+# from MixedLearner import get_r_t
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -85,7 +85,7 @@ def evaluate(args,
                 envs, action, args)
             done_mdp = [info['done_mdp'] for info in infos]
 
-            if args.enable_adaptivelearner:
+            if args.enable_MixedLearner:
 
                 r_t = torch.from_numpy(np.array([info['r_t'] for info in infos], dtype=int)).to(
                     device).float().view((-1, 1))

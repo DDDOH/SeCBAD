@@ -5,33 +5,19 @@ from ...utils.helpers import boolean_argument
 def get_args(rest_args):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--learner_type', default='sacbad',
-                        help="select from varibad, sacbad, oracle_truncate")
-
-    # use wrong priori
-    parser.add_argument('--inaccurate_priori',
-                        type=boolean_argument, default=False)
-
-    # load model and visualize, no more training
-    # 6-11 Hard to reproduce exactly the same results when rendering (call render() will cause the trajectory become a different one)
-    # parser.add_argument('--visualize_model',
-    #                     type=boolean_argument, default=False)
-    # parser.add_argument('--model_dir', type=str,
-    #                     default='/Users/shuffleofficial/Offline_Documents/SaCBAD/load_model_logs_AntDirNon-v0/debug_sacbad_12__06_10_23_24_04/models/')
-    # parser.add_argument('--visualize_index', type=int, default=-1)
-
-    parser.add_argument('--traj_len', type=int, default=500)
+    parser.add_argument('--learner_type', default='secbad',
+                        help="select from varibad, secbad, oracle_truncate")
 
     # --- GENERAL ---
 
     parser.add_argument('--num_frames', type=int, default=1e8,
                         help='number of frames to train')
-    # parser.add_argument('--max_rollouts_per_task', type=int,
-    #                     default=1, help='number of MDP episodes for adaptation')  # 2 originally
-    parser.add_argument('--exp_label', default='sacbad',
+    parser.add_argument('--max_rollouts_per_task', type=int,
+                        default=1, help='number of MDP episodes for adaptation')  # 2 originally
+    parser.add_argument('--exp_label', default='secbad',
                         help='label (typically name of method)')
     parser.add_argument(
-        '--env_name', default='non_envs/AntDir-v4', help='environment to train on')
+        '--env_name', default='HalfDirNon-v0', help='environment to train on')
 
     # --- POLICY ---
 
@@ -64,7 +50,7 @@ def get_args(rest_args):
     parser.add_argument('--norm_rew_for_policy', type=boolean_argument,
                         default=True, help='normalise rew for RL train')
     parser.add_argument('--norm_actions_pre_sampling', type=boolean_argument,
-                        default=False, help='normalise policy output')
+                        default=True, help='normalise policy output')
     parser.add_argument('--norm_actions_post_sampling', type=boolean_argument,
                         default=False, help='normalise policy output')
 
@@ -86,7 +72,7 @@ def get_args(rest_args):
     # PPO specific
     parser.add_argument('--ppo_num_epochs', type=int,
                         default=2, help='number of epochs per PPO update')
-    parser.add_argument('--ppo_num_minibatch', type=int, default=1,
+    parser.add_argument('--ppo_num_minibatch', type=int, default=8,
                         help='number of minibatches to split the data')
     parser.add_argument('--ppo_use_huberloss', type=boolean_argument,
                         default=True, help='use huberloss instead of MSE')
@@ -100,7 +86,7 @@ def get_args(rest_args):
                         help='learning rate (default: 7e-4)')
     parser.add_argument('--num_processes', type=int, default=16,
                         help='how many training CPU processes / parallel environments to use (default: 16)')
-    parser.add_argument('--policy_num_steps', type=int, default=200,
+    parser.add_argument('--policy_num_steps', type=int, default=400,
                         help='number of env steps to do (per process) before updating')
     parser.add_argument('--policy_eps', type=float, default=1e-8,
                         help='optimizer epsilon (1e-8 for ppo, 1e-5 for a2c)')
@@ -209,6 +195,7 @@ def get_args(rest_args):
                         default=1.0, help='weight for task loss')
     parser.add_argument('--task_decoder_layers', nargs='+',
                         type=int, default=[64, 32])
+    # 似乎这里 task_id 指的是离散的task，task_description 是连续的 task
     parser.add_argument('--task_pred_type', type=str,
                         default='task_description', help='choose: task_id, task_description')
 
@@ -240,8 +227,8 @@ def get_args(rest_args):
                         help='sample embedding for policy, instead of full belief')
 
     # for other things
-    # parser.add_argument('--single_task_mode', type=boolean_argument, default=False,
-    #                     help='train policy on one (randomly chosen) environment only')
+    parser.add_argument('--single_task_mode', type=boolean_argument, default=False,
+                        help='train policy on one (randomly chosen) environment only')
 
     # --- OTHERS ---
 
@@ -251,7 +238,7 @@ def get_args(rest_args):
     parser.add_argument('--save_interval', type=int, default=500,
                         help='save interval, one save per n updates')
     parser.add_argument('--save_intermediate_models',
-                        type=boolean_argument, default=True, help='save all models')
+                        type=boolean_argument, default=False, help='save all models')
     parser.add_argument('--eval_interval', type=int, default=25,
                         help='eval interval, one eval per n updates')
     parser.add_argument('--vis_interval', type=int, default=200,

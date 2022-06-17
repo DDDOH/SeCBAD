@@ -78,7 +78,6 @@ class Policy(nn.Module):
         self.pass_latent_to_policy = pass_latent_to_policy
         self.pass_task_to_policy = pass_task_to_policy
         # self.pass_belief_to_policy = pass_belief_to_policy
-
         # set normalisation parameters for the inputs
         # (will be updated from outside using the RL batches)
         self.norm_state = self.args.norm_state_for_policy and (
@@ -176,14 +175,15 @@ class Policy(nn.Module):
             h = self.activation_function(h)
         return h
 
-    def forward(self, state, latent, belief, task):
+    # def forward(self, state, latent, belief, task):
+    def forward(self, state, latent):
 
         # handle inputs (normalise + embed)
 
-        if state.dim() == 1:
-            state = state.unsqueeze(0)
-        if latent.dim() == 1:
-            latent = latent.unsqueeze(0)
+        # if state.dim() == 1:
+        #     state = state.unsqueeze(0)
+        # if latent.dim() == 1:
+        #     latent = latent.unsqueeze(0)
 
         if self.pass_state_to_policy:
             if self.norm_state:
@@ -202,36 +202,44 @@ class Policy(nn.Module):
         else:
             latent = torch.zeros(0, ).to(device)
         # if self.pass_belief_to_policy:
-        #     if self.norm_belief:
-        #         belief = (belief - self.belief_rms.mean) / \
-        #             torch.sqrt(self.belief_rms.var + 1e-8)
-        #     if self.use_belief_encoder:
-        #         belief = self.belief_encoder(belief.float())
+            # raise NotImplementedError(
+            #     'should not use pass_belief_to_policy anymore')
+            # if self.norm_belief:
+            #     belief = (belief - self.belief_rms.mean) / \
+            #         torch.sqrt(self.belief_rms.var + 1e-8)
+            # if self.use_belief_encoder:
+            #     belief = self.belief_encoder(belief.float())
         # else:
         #     belief = torch.zeros(0, ).to(device)
         if self.pass_task_to_policy:
-            if self.norm_task:
-                task = (task - self.task_rms.mean) / \
-                    torch.sqrt(self.task_rms.var + 1e-8)
-            if self.use_task_encoder:
-                task = self.task_encoder(task.float())
-        else:
-            task = torch.zeros(0, ).to(device)
+            raise NotImplementedError(
+                'should not use pass_task_to_policy anymore')
+        #     if self.norm_task:
+        #         task = (task - self.task_rms.mean) / \
+        #             torch.sqrt(self.task_rms.var + 1e-8)
+        #     if self.use_task_encoder:
+        #         task = self.task_encoder(task.float())
+        # # else:
+        #     task = torch.zeros(0, ).to(device)
 
         # concatenate inputs
-        inputs = torch.cat((state, latent, belief, task), dim=-1)
+        # inputs = torch.cat((state, latent, belief, task), dim=-1)
+        inputs = torch.cat((state, latent), dim=-1)
 
         # forward through critic/actor part
         hidden_critic = self.forward_critic(inputs)
         hidden_actor = self.forward_actor(inputs)
         return self.critic_linear(hidden_critic), hidden_actor
 
-    def act(self, state, latent, belief, task, deterministic=False):
+    # def act(self, state, latent, belief, task, deterministic=False):
+    def act(self, state, latent, deterministic=False):
         """
         Returns the (raw) actions and their value.
         """
+        # value, actor_features = self.forward(
+        #     state=state, latent=latent, belief=belief, task=task)
         value, actor_features = self.forward(
-            state=state, latent=latent, belief=belief, task=task)
+            state=state, latent=latent)
         dist = self.dist(actor_features)
         if deterministic:
             if isinstance(dist, FixedCategorical):
@@ -243,8 +251,10 @@ class Policy(nn.Module):
 
         return value, action
 
-    def get_value(self, state, latent, belief, task):
-        value, _ = self.forward(state, latent, belief, task)
+    # def get_value(self, state, latent, belief, task):
+    def get_value(self, state, latent):
+        # value, _ = self.forward(state, latent, belief, task)
+        value, _ = self.forward(state, latent)
         return value
 
     def update_rms(self, args, policy_storage):
@@ -261,14 +271,16 @@ class Policy(nn.Module):
                                                    policy_storage.latent_logvar[:-1])
                                                )
             self.latent_rms.update(latent)
-        if self.pass_belief_to_policy and self.norm_belief:
-            self.belief_rms.update(policy_storage.beliefs[:-1])
+        # if self.pass_belief_to_policy and self.norm_belief:
+        #     self.belief_rms.update(policy_storage.beliefs[:-1])
         if self.pass_task_to_policy and self.norm_task:
             self.task_rms.update(policy_storage.tasks[:-1])
 
-    def evaluate_actions(self, state, latent, belief, task, action):
+    # def evaluate_actions(self, state, latent, belief, task, action):
+    def evaluate_actions(self, state, latent, action):
 
-        value, actor_features = self.forward(state, latent, belief, task)
+        # value, actor_features = self.forward(state, latent, belief, task)
+        value, actor_features = self.forward(state, latent)
         dist = self.dist(actor_features)
 
         if self.args.norm_actions_post_sampling:

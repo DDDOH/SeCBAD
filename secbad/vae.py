@@ -9,7 +9,7 @@ import torch.nn as nn
 from .models.decoder import StateTransitionDecoder, RewardDecoder, TaskDecoder
 from .models.encoder import RNNEncoder
 # from .utils.helpers import get_context_dim, get_num_tasks
-from .utils.storage_vae import RolloutStorageVAE
+from .utils.storage_vae import RolloutStorageVAE, VAEBuffer
 
 device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
@@ -40,7 +40,7 @@ class VaribadVAE:
         # initialise rollout storage for the VAE update
         # (this differs from the data that the on-policy RL algorithm uses)
         self.rollout_storage = RolloutStorageVAE(num_processes=self.args.num_processes,
-                                                 max_trajectory_len=self.args.max_trajectory_len,
+                                                 max_trajectory_len=self.args.traj_len,
                                                  zero_pad=True,
                                                  max_num_rollouts=self.args.size_vae_buffer,
                                                  state_dim=self.args.state_dim,
@@ -49,6 +49,14 @@ class VaribadVAE:
                                                  vae_buffer_add_thresh=self.args.vae_buffer_add_thresh,
                                                  context_dim=self.context_dim
                                                  )
+
+        self.vae_buffer = VAEBuffer(num_processes=self.args.num_processes,
+                                    state_dim=self.args.state_dim,
+                                    action_dim=self.args.action_dim,
+                                    context_dim=self.context_dim,
+                                    buffer_size=self.args.size_vae_buffer,
+                                    traj_len=self.args.traj_len,
+                                    store_r_t=(self.args.learner_type == 'secbad'))
 
         # initalise optimiser for the encoder and decoders
         decoder_params = []
@@ -267,34 +275,38 @@ class VaribadVAE:
 
         return kl_divergences
 
+    # def compute_loss(self, latent_mean, latent_logvar, vae_prev_obs, vae_next_obs, vae_actions,
+    #                  vae_rewards, vae_tasks, trajectory_lens, r_t=None, nonstationary_tasks=None):
     def compute_loss(self, latent_mean, latent_logvar, vae_prev_obs, vae_next_obs, vae_actions,
-                     vae_rewards, vae_tasks, trajectory_lens, r_t=None, nonstationary_tasks=None):
+                     vae_rewards, vae_tasks, r_t=None, nonstationary_tasks=None):
         """
         Computes the VAE loss for the given data.
         Batches everything together and therefore needs all trajectories to be of the same length.
         (Important because we need to separate ELBOs and decoding terms so can't collapse those dimensions)
         """
 
-        num_unique_trajectory_lens = len(np.unique(trajectory_lens))
+        # 6-17 assume latent_mean, etc are all computed for the full trajectory
 
-        assert (num_unique_trajectory_lens == 1) or (
-            self.args.vae_subsample_elbos and self.args.vae_subsample_decodes)
-        assert not self.args.decode_only_past
+        # num_unique_trajectory_lens = len(np.unique(trajectory_lens))
+
+        # assert (num_unique_trajectory_lens == 1) or (
+        #     self.args.vae_subsample_elbos and self.args.vae_subsample_decodes)
+        # assert not self.args.decode_only_past
 
         # cut down the batch to the longest trajectory length
         # this way we can preserve the structure
         # but we will waste some computation on zero-padded trajectories that are shorter than max_traj_len
-        max_traj_len = np.max(trajectory_lens)
+        # max_traj_len = np.max(trajectory_lens)
         # traj_len + 1 * batch_size * latent_dim
-        latent_mean = latent_mean[:max_traj_len + 1]
-        latent_logvar = latent_logvar[:max_traj_len + 1]
-        # traj_len * batch_size * obs_dim/act_dim/rew_dim
-        vae_prev_obs = vae_prev_obs[:max_traj_len]
-        vae_next_obs = vae_next_obs[:max_traj_len]
-        vae_actions = vae_actions[:max_traj_len]
-        vae_rewards = vae_rewards[:max_traj_len]
-        if nonstationary_tasks is not None:
-            vae_nonstationary_tasks = nonstationary_tasks[:max_traj_len]
+        # latent_mean = latent_mean[:max_traj_len + 1]
+        # latent_logvar = latent_logvar[:max_traj_len + 1]
+        # # traj_len * batch_size * obs_dim/act_dim/rew_dim
+        # vae_prev_obs = vae_prev_obs[:max_traj_len]
+        # vae_next_obs = vae_next_obs[:max_traj_len]
+        # vae_actions = vae_actions[:max_traj_len]
+        # vae_rewards = vae_rewards[:max_traj_len]
+        # if nonstationary_tasks is not None:
+        #     vae_nonstationary_tasks = nonstationary_tasks[:max_traj_len]
 
         # take one sample for each ELBO term
         if not self.args.disable_stochasticity_in_latent:
@@ -318,21 +330,21 @@ class VaribadVAE:
                 # vae_subsample_elbos: for how many timesteps to compute the ELBO; None uses all'
                 if self.args.vae_subsample_elbos is not None:
                     # randomly choose which elbo's to subsample
-                    if num_unique_trajectory_lens == 1:
-                        # select diff elbos for each task
-                        elbo_indices = torch.LongTensor(
-                            self.args.vae_subsample_elbos * batchsize).random_(0, num_elbos)
-                    else:
-                        # XXX tfuck 这里在做什么， elbo_indices这个东西是干嘛的
-                        # if we have different trajectory lengths, subsample elbo indices separately
-                        # up to their maximum possible encoding length;
-                        # only allow duplicates if the sample size would be larger than the number of samples
-                        elbo_indices = np.concatenate([np.random.choice(range(0, t + 1), self.args.vae_subsample_elbos,
-                                                                        replace=self.args.vae_subsample_elbos > (t+1)) for t in trajectory_lens])
-                        if max_traj_len < self.args.vae_subsample_elbos:
-                            warnings.warn('The required number of ELBOs is larger than the shortest trajectory, '
-                                          'so there will be duplicates in your batch.'
-                                          'To avoid this use --split_batches_by_elbo or --split_batches_by_task.')
+                    # if num_unique_trajectory_lens == 1:
+                    # select diff elbos for each task
+                    elbo_indices = torch.LongTensor(
+                        self.args.vae_subsample_elbos * batchsize).random_(0, num_elbos)
+                    # else:
+                    #     # XXX tfuck 这里在做什么， elbo_indices这个东西是干嘛的
+                    #     # if we have different trajectory lengths, subsample elbo indices separately
+                    #     # up to their maximum possible encoding length;
+                    #     # only allow duplicates if the sample size would be larger than the number of samples
+                    #     elbo_indices = np.concatenate([np.random.choice(range(0, t + 1), self.args.vae_subsample_elbos,
+                    #                                                     replace=self.args.vae_subsample_elbos > (t+1)) for t in trajectory_lens])
+                    #     if max_traj_len < self.args.vae_subsample_elbos:
+                    #         warnings.warn('The required number of ELBOs is larger than the shortest trajectory, '
+                    #                       'so there will be duplicates in your batch.'
+                    #                       'To avoid this use --split_batches_by_elbo or --split_batches_by_task.')
                     task_indices = torch.arange(batchsize).repeat(
                         self.args.vae_subsample_elbos)  # for selection mask
 
@@ -364,12 +376,12 @@ class VaribadVAE:
 
                     indices0 = torch.arange(num_elbos).repeat(
                         self.args.vae_subsample_decodes * batchsize)
-                    if num_unique_trajectory_lens == 1:
-                        indices1 = torch.LongTensor(
-                            num_elbos * self.args.vae_subsample_decodes * batchsize).random_(0, num_decodes)
-                    else:
-                        indices1 = np.concatenate([np.random.choice(range(0, t), num_elbos * self.args.vae_subsample_decodes,
-                                                                    replace=True) for t in trajectory_lens])
+                    # if num_unique_trajectory_lens == 1:
+                    indices1 = torch.LongTensor(
+                        num_elbos * self.args.vae_subsample_decodes * batchsize).random_(0, num_decodes)
+                    # else:
+                    #     indices1 = np.concatenate([np.random.choice(range(0, t), num_elbos * self.args.vae_subsample_decodes,
+                    #                                                 replace=True) for t in trajectory_lens])
                     indices2 = torch.arange(batchsize).repeat(
                         num_elbos * self.args.vae_subsample_decodes)
                     dec_prev_obs = dec_prev_obs[indices0, indices1, indices2, :].reshape(
@@ -716,7 +728,7 @@ class VaribadVAE:
             # compute the KL term for each ELBO term of the current trajectory
             # shape: [num_elbo_terms] x [num_trajectories]
             if r_t is not None:
-                # code for sacbad
+                # code for secbad
                 kl_loss = self.compute_kl_loss(
                     latent_mean, latent_logvar, elbos_index_flat)
             else:
@@ -880,9 +892,15 @@ class VaribadVAE:
             return 0
 
         # get a mini-batch
-        vae_prev_obs, vae_next_obs, vae_actions, vae_rewards, vae_tasks, \
-            trajectory_lens, r_t, nonstationary_tasks = self.rollout_storage.get_batch(
-                batchsize=self.args.vae_batch_num_trajs)
+
+        # prev_state, next_state, actions, rewards, r_ts
+        vae_prev_obs, vae_next_obs, vae_actions, vae_rewards, r_t = self.vae_buffer.get_batch(
+            batchsize=self.args.vae_batch_num_trajs)
+
+        # vae_prev_obs, vae_next_obs, vae_actions, vae_rewards, vae_tasks, \
+        #     trajectory_lens, r_t, nonstationary_tasks = self.rollout_storage.get_batch(
+        #         batchsize=self.args.vae_batch_num_trajs)
+
         # vae_prev_obs will be of size: max trajectory len x num trajectories x dimension of observations
 
         # pass through encoder (outputs will be: (max_traj_len+1) x number of rollouts x latent_dim -- includes the prior!)
@@ -897,6 +915,8 @@ class VaribadVAE:
                                                         r_t=r_t
                                                         )
 
+        vae_tasks = None  # 6-17 ignore decode_task for now
+        nonstationary_tasks = None
         if self.args.split_batches_by_task:
             raise NotImplementedError
             losses = self.compute_loss_split_batches_by_task(latent_mean, latent_logvar, vae_prev_obs, vae_next_obs,
@@ -909,7 +929,7 @@ class VaribadVAE:
         else:
             # FIXED 5_15 dimension of vae_tasks? does it change within one episode?
             losses = self.compute_loss(latent_mean, latent_logvar, vae_prev_obs, vae_next_obs, vae_actions,
-                                       vae_rewards, vae_tasks, trajectory_lens, r_t=r_t, nonstationary_tasks=nonstationary_tasks)
+                                       vae_rewards, vae_tasks, r_t=r_t, nonstationary_tasks=nonstationary_tasks)
         rew_reconstruction_loss, state_reconstruction_loss, task_reconstruction_loss, kl_loss = losses
 
         # VAE loss = KL loss + reward reconstruction + state transition reconstruction

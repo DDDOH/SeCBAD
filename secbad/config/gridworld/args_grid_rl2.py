@@ -5,7 +5,7 @@ from ...utils.helpers import boolean_argument
 def get_args(rest_args):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--enable_adaptivelearner',
+    parser.add_argument('--enable_MixedLearner',
                         type=boolean_argument, default=False)
 
     # --- GENERAL ---

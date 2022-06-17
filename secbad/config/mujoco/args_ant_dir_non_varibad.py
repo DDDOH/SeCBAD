@@ -6,7 +6,9 @@ def get_args(rest_args):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--learner_type', default='varibad',
-                        help="select from varibad, sacbad, oracle_truncate")
+                        help="select from varibad, secbad, oracle_truncate")
+
+    parser.add_argument('--traj_len', type=int, default=200)
 
     # --- GENERAL ---
 
@@ -17,7 +19,7 @@ def get_args(rest_args):
     parser.add_argument('--exp_label', default='varibad',
                         help='label (typically name of method)')
     parser.add_argument(
-        '--env_name', default='AntDirNon-v0', help='environment to train on')
+        '--env_name', default='AntDir', help='environment to train on')
 
     # --- POLICY ---
 

@@ -14,7 +14,6 @@ import torch
 
 # TODO force hvac only have cooling functionality, when DAT > zone temperature or something else, raise a warrning
 
-
 def positive_part(input):
     return (input + np.abs(input))/2
 
@@ -107,7 +106,7 @@ class HVAC(gym.Env):
             positive_part(np.abs(SPS_i - self.prev_SPS) - 0.3)
 
         # TODO add other reward here
-        done = False
+        done = (self.step_idx == self.traj_len - 1)
         info = {'task': self.get_task(),
                 'T_i': self.T_i,
                 'DAS': DAS_i,
@@ -125,16 +124,19 @@ class HVAC(gym.Env):
 
         return observation, reward, done, info
 
-    def reset(self, options, seed=None):
+    def reset(self, options=None, seed=None):
         """
         Reset the environment. This should *NOT* automatically reset the task!
         Resetting the task is handled in the varibad wrapper (see wrappers.py).
         """
 
-        traj_context = options['traj_context'][self.id]
-        assert self.traj_len == len(
-            traj_context), "traj_context length must be equal to max_episode_steps"
-        self.OAT = traj_context
+        if options != None:
+            traj_context = options['traj_context'][self.id]
+            assert self.traj_len == len(
+                traj_context), "traj_context length must be equal to max_episode_steps"
+            self.OAT = traj_context
+        else:
+            self.OAT = self.get_traj_context(self.traj_len)
 
         self.n_building = 10
         C_a = 1  # J/g/C
@@ -343,7 +345,7 @@ class HVAC(gym.Env):
 
     # for episode_idx in range(num_episodes):
 
-        if args.learner_type == 'sacbad':
+        if args.learner_type == 'secbad':
             hidden_rec = HiddenRecoder(encoder)
             p_G_t_dist_rec = []
 
@@ -356,7 +358,7 @@ class HVAC(gym.Env):
         if encoder is not None:
             # if episode_idx == 0:
             # reset to prior
-            if args.learner_type == 'sacbad':
+            if args.learner_type == 'secbad':
                 curr_latent_sample, curr_latent_mean, curr_latent_logvar = hidden_rec.encoder_init(
                     0)
             else:
@@ -377,13 +379,13 @@ class HVAC(gym.Env):
             latent_means.append(curr_latent_mean[0].clone())
             latent_logvars.append(curr_latent_logvar[0].clone())
 
-        if args.learner_type == 'sacbad':
+        if args.learner_type == 'secbad':
             # G_t_dist = {1: 1}
             p_G_t_dist = {1: 1}
             best_unchange_length_rec = []
 
         iterator = progressbar.progressbar(
-            range(1, env._max_episode_steps + 1), redirect_stdout=True) if args.learner_type == 'sacbad' else range(1, env._max_episode_steps + 1)
+            range(1, env._max_episode_steps + 1), redirect_stdout=True) if args.learner_type == 'secbad' else range(1, env._max_episode_steps + 1)
 
         for step_idx in iterator:
 
@@ -438,8 +440,8 @@ class HVAC(gym.Env):
                             1, -1).float().to(device), state, rew.reshape(1, -1).float().to(device),
                         hidden_state, return_prior=False)
 
-                elif args.learner_type == 'sacbad':
-                    # 5_23 use evaluate function in adaptive_learner.py
+                elif args.learner_type == 'secbad':
+                    # 5_23 use evaluate function in mixed_learner.py
                     state_decoder = kwargs['state_decoder']
                     reward_decoder = kwargs['reward_decoder']
                     # prev_state = episode_prev_obs[episode_idx][-1]
@@ -448,7 +450,7 @@ class HVAC(gym.Env):
                     inaccurate_priori = False if 'inaccurate_priori' not in kwargs else kwargs[
                         'inaccurate_priori']
 
-                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, best_unchange_length, p_G_t_dist = AdaptiveLearner.inference(
+                    curr_latent_sample, curr_latent_mean, curr_latent_logvar, best_unchange_length, p_G_t_dist = MixedLearner.inference(
                         hidden_rec, prev_state, action, state, rew, step_idx, reward_decoder, state_decoder, p_G=unwrapped_env.get_p_G(inaccurate_priori), p_G_t_dist=p_G_t_dist)
                     best_unchange_length_rec.append(best_unchange_length)
                     p_G_t_dist_rec.append(p_G_t_dist)
@@ -486,7 +488,7 @@ class HVAC(gym.Env):
 
         # DONE 5_23 record all data for plot
         # DONE 5_23 remove num_episodes
-        if args.learner_type == 'sacbad':
+        if args.learner_type == 'secbad':
             p_G_t_dist_mat = np.zeros(
                 (len(p_G_t_dist_rec)+1, len(p_G_t_dist_rec)+1))
             for i in range(len(p_G_t_dist_rec)):
@@ -503,9 +505,9 @@ class HVAC(gym.Env):
                     'tasks': tasks,
                     'curr_direction': curr_direction,
                     'forward_velocity': forward_velocity,
-                    'best_unchange_length_rec': best_unchange_length_rec if args.learner_type == 'sacbad' else None,
-                    'p_G_t_dist_rec': p_G_t_dist_rec if args.learner_type == 'sacbad' else None,
-                    'p_G_t_dist_mat': p_G_t_dist_mat if args.learner_type == 'sacbad' else None,
+                    'best_unchange_length_rec': best_unchange_length_rec if args.learner_type == 'secbad' else None,
+                    'p_G_t_dist_rec': p_G_t_dist_rec if args.learner_type == 'secbad' else None,
+                    'p_G_t_dist_mat': p_G_t_dist_mat if args.learner_type == 'secbad' else None,
                     }
 
         np.save('{}/{}_vis_data.npy'.format(image_folder, iter_idx), vis_dict)
@@ -527,7 +529,7 @@ class HVAC(gym.Env):
         fluc_SPS_rec = np.array(vis_dict['fluc_SPS'])
 
         # TODO
-        num_subplot = 7 + (args.learner_type == 'sacbad')
+        num_subplot = 7 + (args.learner_type == 'secbad')
         plt.figure(figsize=(10, 6))
         plt.subplot(3, 3, 1)
         plt.plot(T_i_rec, c='r', alpha=0.3)
@@ -585,7 +587,7 @@ class HVAC(gym.Env):
         #     len(vis_dict['curr_direction'])), 'k')
         # plt.title('velocity along task')
 
-        if args.learner_type == 'sacbad':
+        if args.learner_type == 'secbad':
             plt.subplot(1, num_subplot, 4)
             plt.plot(vis_dict['best_unchange_length_rec'], range(
                 len(vis_dict['best_unchange_length_rec'])), 'k')
@@ -598,7 +600,7 @@ class HVAC(gym.Env):
         plt.savefig('{}/{}_behaviour'.format(image_folder, iter_idx))
         plt.close('all')
 
-        if args.learner_type == 'sacbad':
+        if args.learner_type == 'secbad':
             plt.figure()
             plt.imshow(vis_dict['p_G_t_dist_mat'])
             plt.savefig('{}/{}_p_G'.format(image_folder, iter_idx))

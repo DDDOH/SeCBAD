@@ -6,7 +6,7 @@ def get_args(rest_args):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--learner_type', default='varibad',
-                        help="select from varibad, sacbad, oracle_truncate")
+                        help="select from varibad, secbad, oracle_truncate")
 
     # --- GENERAL ---
 

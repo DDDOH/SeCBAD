@@ -116,17 +116,17 @@ class RewardDecoder(nn.Module):
         if actions is not None:
             actions = utl.squash_action(actions, self.args)
 
-        if self.multi_head:
-            h = latent_state.clone()
-        else:
-            hns = self.state_encoder(next_state)
-            h = torch.cat((latent_state, hns), dim=-1)
-            if self.input_action:
-                ha = self.action_encoder(actions)
-                h = torch.cat((h, ha), dim=-1)
-            if self.input_prev_state:
-                hps = self.state_encoder(prev_state)
-                h = torch.cat((h, hps), dim=-1)
+        # if self.multi_head:
+        #     h = latent_state.clone()
+        # else:
+        hns = self.state_encoder(next_state)
+        h = torch.cat((latent_state, hns), dim=-1)
+        if self.input_action:
+            ha = self.action_encoder(actions)
+            h = torch.cat((h, ha), dim=-1)
+        if self.input_prev_state:
+            hps = self.state_encoder(prev_state)
+            h = torch.cat((h, hps), dim=-1)
 
         for i in range(len(self.fc_layers)):
             h = F.relu(self.fc_layers[i](h))

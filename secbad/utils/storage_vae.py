@@ -4,6 +4,94 @@ import torch
 device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 
+class VAEBuffer():
+    def __init__(self, num_processes, state_dim, action_dim, context_dim, buffer_size, traj_len, store_r_t):
+        # buffer_size is max_num_rollouts
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.context_dim = context_dim
+        self.num_processes = num_processes
+
+        self.buffer_size = buffer_size
+        self.store_r_t = store_r_t
+
+        self.traj_len = traj_len
+
+        self.prev_state = torch.zeros(
+            (self.traj_len, self.buffer_size, state_dim))
+        self.next_state = torch.zeros(
+            (self.traj_len, self.buffer_size, state_dim))
+        self.actions = torch.zeros(
+            (self.traj_len, self.buffer_size, action_dim))
+        self.rewards = torch.zeros(
+            (self.traj_len, self.buffer_size, 1))
+        if store_r_t:
+            self.r_ts = torch.zeros(
+                (self.traj_len, self.buffer_size, 1))
+        self.insert_idx = 0
+
+        self._reset_running_buffer()
+
+    def insert(self, prev_state, actions, next_state, rewards, done, step, r_ts=None):
+        self.running_prev_state[self.curr_timestep[0]] = prev_state
+        self.running_next_state[self.curr_timestep[0]] = next_state
+        self.running_rewards[self.curr_timestep[0]] = rewards
+        if r_ts is not None:
+            self.running_r_ts[self.curr_timestep[0]] = r_ts
+            self.no_r_t = False
+        else:
+            self.no_r_t = True
+        self.running_actions[self.curr_timestep[0]] = actions
+        self.curr_timestep += 1
+
+        assert np.unique(self.curr_timestep).size == 1
+        if self.curr_timestep[0] == self.traj_len:
+            # print('Full vae buffer')
+            self.prev_state[:, self.insert_idx:self.insert_idx +
+                            self.num_processes, :] = self.running_prev_state
+            self.next_state[:, self.insert_idx:self.insert_idx +
+                            self.num_processes, :] = self.running_next_state
+            self.actions[:, self.insert_idx:self.insert_idx +
+                         self.num_processes, :] = self.running_actions
+            self.rewards[:, self.insert_idx:self.insert_idx +
+                         self.num_processes, :] = self.running_rewards
+            if self.store_r_t:
+                self.r_ts[:, self.insert_idx:self.insert_idx +
+                          self.num_processes, :] = self.running_r_ts
+            self.insert_idx += self.num_processes
+            self._reset_running_buffer()
+
+    def _reset_running_buffer(self):
+        self.running_prev_state = torch.zeros((self.traj_len, self.num_processes, self.state_dim)).to(
+            device)  # for each episode will have obs 0...N-1
+        self.running_next_state = torch.zeros((self.traj_len, self.num_processes, self.state_dim)).to(
+            device)  # for each episode will have obs 1...N
+        self.running_rewards = torch.zeros(
+            (self.traj_len, self.num_processes, 1)).to(device)
+        self.running_r_ts = torch.zeros(
+            (self.traj_len, self.num_processes, 1)).to(device)
+        self.running_actions = torch.zeros(
+            (self.traj_len, self.num_processes, self.action_dim)).to(device)
+
+        self.curr_timestep = torch.zeros((self.num_processes)).long()
+
+    def get_running_batch(self):
+        return self.running_prev_state, self.running_next_state, self.running_actions, self.running_rewards, self.curr_timestep
+
+    def get_batch(self, batchsize=5, replace=False):
+        batchsize = min(self.insert_idx, batchsize)
+        selected_traj_idx = np.random.choice(
+            self.insert_idx, batchsize, replace=replace)
+        
+        prev_state = self.prev_state[:, selected_traj_idx, :]
+        next_state = self.next_state[:, selected_traj_idx, :]
+        actions = self.actions[:, selected_traj_idx, :]
+        rewards = self.rewards[:, selected_traj_idx, :]
+        r_ts = self.r_ts[:, selected_traj_idx, :] if self.store_r_t else None
+        
+        return prev_state, next_state, actions, rewards, r_ts
+
+
 class RolloutStorageVAE(object):
     def __init__(self, num_processes, max_trajectory_len, zero_pad, max_num_rollouts,
                  state_dim, action_dim, vae_buffer_add_thresh, context_dim):

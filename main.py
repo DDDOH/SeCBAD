@@ -11,16 +11,16 @@ if platform.system() == 'Linux':
     os.environ['MUJOCO_GL'] = "egl"
 
 from secbad.config.mujoco import args_half_dir_non_varibad, args_half_dir_non_varibad_xt, args_half_dir_non_varibad_single, \
-    args_half_dir_non_sacbad
+    args_half_dir_non_secbad
 from secbad.config.mujoco import args_half_goal_non_varibad, args_half_goal_non_varibad_xt, args_half_goal_non_varibad_single, \
-    args_half_goal_non_sacbad
+    args_half_goal_non_secbad
 from secbad.config.mujoco import args_ant_goal_non_varibad, args_ant_goal_non_varibad_xt, args_ant_goal_non_varibad_single, \
-    args_ant_goal_non_sacbad
+    args_ant_goal_non_secbad
 from secbad.config.mujoco import args_ant_dir_non_varibad, args_ant_dir_non_varibad_xt, args_ant_dir_non_varibad_single, \
-    args_ant_dir_non_sacbad
+    args_ant_dir_non_secbad
 from secbad.config.mujoco import args_ant_vel_non_varibad, args_ant_vel_non_varibad_xt, args_ant_vel_non_varibad_single, \
-    args_ant_vel_non_sacbad
-from secbad.config.mujoco import args_half_vel_non_sacbad
+    args_ant_vel_non_secbad
+from secbad.config.mujoco import args_half_vel_non_secbad
 
 from secbad.config import args_hvac_varibad
 
@@ -29,17 +29,9 @@ from secbad.config import args_hvac_varibad
 # get configs
 from secbad.config.gridworld import \
     args_grid_belief_oracle, args_grid_rl2, args_grid_varibad, args_grid_nonstationary
-# from config.pointrobot import \
-#     args_pointrobot_multitask, args_pointrobot_varibad, args_pointrobot_rl2, args_pointrobot_humplik
 ########################## archive ##########################
 
-
-# from environments.parallel_envs import make_vec_envs
-# [ ] move learners into learners folder
-from secbad.learner import Learner
-from secbad.metalearner import MetaLearner
-from secbad.oracle_truncate_learner import OracleTruncateLearner
-from secbad.adaptive_learner import AdaptiveLearner
+from secbad.mixed_learner import MixedLearner
 
 
 def main():
@@ -53,12 +45,15 @@ def main():
     else:
         NUM_PROCESSES = 2
         LOG_INTERVAL = 50
-        NUM_FRAMES = 100000
+        NUM_FRAMES = 5000000
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--env-type', default='args_hvac_varibad')
+        '--env-type', default='args_ant_dir_non_varibad')
+
+    # parser.add_argument(
+    # '--env-type', default='args_hvac_varibad')
 
     args, rest_args = parser.parse_known_args()
     env = args.env_type
@@ -74,11 +69,11 @@ def main():
 
     if CUDA:
         if CUDA_COUNT == 1:  # for A100
-            args.results_log_dir = '/home/yufeng/SaCBAD_tmp'
+            args.results_log_dir = '/home/yufeng/secbad_tmp'
         else:  # for V100
-            args.results_log_dir = '/home/yufeng/SaCBAD_tmp'
+            args.results_log_dir = '/home/yufeng/secbad_tmp'
     else:
-        args.results_log_dir = '/Users/shuffleofficial/Offline_Documents/SaCBAD/tmp_results'
+        args.results_log_dir = '/Users/shuffleofficial/Offline_Documents/secbad/tmp_results'
 
     # warning for deterministic execution
     if args.deterministic_execution:
@@ -101,49 +96,24 @@ def main():
         assert np.unique(envs.action_space.low) == [-1]
         assert np.unique(envs.action_space.high) == [1]
 
-    # clean up arguments
-    if args.learner_type == 'ori' or args.disable_decoder:
-        args.decode_reward = False
-        args.decode_state = False
-        args.decode_task = False
+    # # clean up arguments
+    # if args.learner_type == 'ori' or args.disable_decoder:
+    #     args.decode_reward = False
+    #     args.decode_state = False
+    #     args.decode_task = False
 
     if hasattr(args, 'decode_only_past') and args.decode_only_past:
         args.split_batches_by_elbo = True
-    # if hasattr(args, 'vae_subsample_decodes') and args.vae_subsample_decodes:
-    #     args.split_batches_by_elbo = True
 
     # begin training (loop through all passed seeds)
     seed_list = [args.seed] if isinstance(args.seed, int) else args.seed
-
-    # envs = gym.vector.AsyncVectorEnv([lambda: gym.make(
-    #     id=args.env_name, traj_len=args.max_episode_steps) for _ in range(args.num_processes)])
-
-    # envs = gym.vector.AsyncVectorEnv([
-    #     lambda: AntDir(traj_len=500),
-    #     lambda: AntDir(traj_len=500),
-    #     lambda: AntDir(traj_len=500)
-    # ])
 
     for seed in seed_list:
         print('training', seed)
         args.seed = seed
         args.action_space = None
 
-        # # "select from ori, meta, orical_truncate, sacbad"
-        # if args.learner_type == 'sacbad':
-        #     learner = AdaptiveLearner(args)
-        # elif args.learner_type == 'varibad':
-        #     learner = MetaLearner(args)
-        # elif args.learner_type == 'ori':
-        #     learner = Learner(args)
-        # elif args.learner_type == 'oracle_truncate':
-        #     learner = OracleTruncateLearner(args)
-        # else:
-        #     raise Exception("Invalid Learner Type")
-
-        # put all type learners together
-
-        learner = AdaptiveLearner(args)
+        learner = MixedLearner(args)
 
         # if args has attribute visualize_model
         if hasattr(args, 'visualize_model') and args.visualize_model:

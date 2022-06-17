@@ -78,7 +78,7 @@ def squash_action(action, args):
 
 def env_step(env, action, args):
     act = squash_action(action.detach(), args)
-    next_obs, reward, done, infos = env.step(act)
+    next_obs, reward, done, infos = env.vec_env.step(act)
 
     if isinstance(next_obs, list):
         next_obs = [o.to(device) for o in next_obs]
@@ -107,14 +107,10 @@ def select_action(args,
     """ Select action using the policy. """
     latent = get_latent_for_policy(args=args, latent_sample=latent_sample, latent_mean=latent_mean,
                                    latent_logvar=latent_logvar)
-    # make state and latent to the same dimension
-    # if (state.dim() == 1) and (latent.dim() != 1):
-    #     state = state.unsqueeze(0)
-    # if (state.dim() != 1) and (latent.dim() == 1):
-    #     latent = latent.unsqueeze(0)
-    # obselete code, handle dimension issue in policy.act function
+    # action = policy.act(state=state, latent=latent,
+    #                     belief=belief, task=task, deterministic=deterministic)
     action = policy.act(state=state, latent=latent,
-                        belief=belief, task=task, deterministic=deterministic)
+                        task=task, deterministic=deterministic)
     if isinstance(action, list) or isinstance(action, tuple):
         value, action = action
     else:
@@ -171,7 +167,7 @@ def update_encoding(encoder, next_obs, action, reward, done, hidden_state, **kwa
     if done is None:
         done = torch.zeros(size=(n_processes, 1),
                            dtype=torch.uint8, device=device)
-    if 'r_t' in kwargs.keys():
+    if kwargs['r_t'] is not None:
         reset_flag = torch.logical_or(done, kwargs['r_t'] == 0).float()
         # 22_5_9 fixed a bug here, originally
         # reset_flag = done + (kwargs['r_t'] == 0)
@@ -182,9 +178,11 @@ def update_encoding(encoder, next_obs, action, reward, done, hidden_state, **kwa
     # reset_flag = 1 means we reset the hidden state of RNN
     hidden_state = encoder.reset_hidden(hidden_state, reset_flag)
     with torch.no_grad():
-        latent_sample, latent_mean, latent_logvar, hidden_state = encoder(actions=action.float(),
-                                                                          states=next_obs,
-                                                                          rewards=reward,
+        latent_sample, latent_mean, latent_logvar, hidden_state = encoder(actions=action,
+                                                                          states=torch.tensor(
+                                                                              next_obs).float(),
+                                                                          rewards=torch.tensor(
+                                                                              reward).float().unsqueeze(-1),
                                                                           hidden_state=hidden_state,
                                                                           return_prior=False)
 

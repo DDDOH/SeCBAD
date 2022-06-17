@@ -62,10 +62,10 @@ class AdaptiveOnlineStorage(object):
         #         num_steps + 1, num_processes, belief_dim)
         # else:
         #     self.beliefs = None
-        if self.args.pass_task_to_policy:
-            self.tasks = torch.zeros(num_steps + 1, num_processes, context_dim)
-        else:
-            self.tasks = None
+        # if self.args.pass_task_to_policy:
+        #     self.tasks = torch.zeros(num_steps + 1, num_processes, context_dim)
+        # else:
+        #     self.tasks = None
 
         # rewards and end of episodes
         self.rewards_raw = torch.zeros(num_steps, num_processes, 1)
@@ -73,7 +73,7 @@ class AdaptiveOnlineStorage(object):
         self.done = torch.zeros(num_steps + 1, num_processes, 1)
         self.masks = torch.ones(num_steps + 1, num_processes, 1)
         # masks that indicate whether it's a true terminal state (false) or time limit end state (true)
-        self.bad_masks = torch.ones(num_steps + 1, num_processes, 1)
+        # self.bad_masks = torch.ones(num_steps + 1, num_processes, 1)
         self.r_t = torch.zeros(
             num_steps + 1, num_processes, 1)  # TODO +1 or not?
 
@@ -109,13 +109,13 @@ class AdaptiveOnlineStorage(object):
             self.next_state = self.next_state.to(device)
         # if self.args.pass_belief_to_policy:
         #     self.beliefs = self.beliefs.to(device)
-        if self.args.pass_task_to_policy:
-            self.tasks = self.tasks.to(device)
+        # if self.args.pass_task_to_policy:
+        #     self.tasks = self.tasks.to(device)
         self.rewards_raw = self.rewards_raw.to(device)
         self.rewards_normalised = self.rewards_normalised.to(device)
         self.done = self.done.to(device)
         self.masks = self.masks.to(device)
-        self.bad_masks = self.bad_masks.to(device)
+        # self.bad_masks = self.bad_masks.to(device)
         self.value_preds = self.value_preds.to(device)
         self.returns = self.returns.to(device)
         self.actions = self.actions.to(device)
@@ -123,13 +123,13 @@ class AdaptiveOnlineStorage(object):
     def insert(self,
                state,
                #    belief,
-               task,
+               #    task,
                actions,
                rewards_raw,
                rewards_normalised,
                value_preds,
-               masks,
-               bad_masks,
+               #    masks,
+               #    bad_masks,
                done,
                r_t,
                #
@@ -139,7 +139,7 @@ class AdaptiveOnlineStorage(object):
                latent_logvar=None,
                **kwargs,
                ):
-        # this is how insert function is called in the 'for step in range(self.args.policy_num_steps):' loop in adaptivelearner.py
+        # this is how insert function is called in the 'for step in range(self.args.policy_num_steps):' loop in MixedLearner.py
         # state=next_state,
         # belief=belief,
         # task=task,
@@ -158,8 +158,8 @@ class AdaptiveOnlineStorage(object):
         self.prev_state[self.step + 1].copy_(state)
         # if self.args.pass_belief_to_policy:
         #     self.beliefs[self.step + 1].copy_(belief)
-        if self.args.pass_task_to_policy:
-            self.tasks[self.step + 1].copy_(task)
+        # if self.args.pass_task_to_policy:
+        #     self.tasks[self.step + 1].copy_(task)
         if self.args.pass_latent_to_policy:
             self.latent_samples.append(latent_sample.detach().clone())
             self.latent_mean.append(latent_mean.detach().clone())
@@ -175,18 +175,19 @@ class AdaptiveOnlineStorage(object):
             self.value_preds[self.step].copy_(value_preds[0].detach())
         else:
             self.value_preds[self.step].copy_(value_preds.detach())
-        self.masks[self.step + 1].copy_(masks)
-        self.bad_masks[self.step + 1].copy_(bad_masks)
+        # self.masks[self.step + 1].copy_(masks)
+        # self.bad_masks[self.step + 1].copy_(bad_masks)
         self.done[self.step + 1].copy_(done)
-        self.r_t[self.step + 1].copy_(r_t)
+        if r_t is not None:
+            self.r_t[self.step + 1].copy_(r_t)
         self.step = (self.step + 1) % self.num_steps
 
     def after_update(self):
         self.prev_state[0].copy_(self.prev_state[-1])
         # if self.args.pass_belief_to_policy:
         #     self.beliefs[0].copy_(self.beliefs[-1])
-        if self.args.pass_task_to_policy:
-            self.tasks[0].copy_(self.tasks[-1])
+        # if self.args.pass_task_to_policy:
+        #     self.tasks[0].copy_(self.tasks[-1])
         if self.args.pass_latent_to_policy:
             self.latent_samples = []
             self.latent_mean = []
@@ -194,7 +195,7 @@ class AdaptiveOnlineStorage(object):
             self.hidden_states[0].copy_(self.hidden_states[-1])
         self.done[0].copy_(self.done[-1])
         self.masks[0].copy_(self.masks[-1])
-        self.bad_masks[0].copy_(self.bad_masks[-1])
+        # self.bad_masks[0].copy_(self.bad_masks[-1])
         self.action_log_probs = None
 
     def compute_returns(self, next_value, use_gae, gamma, tau, use_proper_time_limits=True):
@@ -221,13 +222,16 @@ class AdaptiveOnlineStorage(object):
                     delta = rewards[step] + gamma * value_preds[step +
                                                                 1] * self.masks[step + 1] - value_preds[step]
                     gae = delta + gamma * tau * self.masks[step + 1] * gae
-                    gae = gae * self.bad_masks[step + 1]
+                    # gae = gae * self.bad_masks[step + 1]
                     returns[step] = gae + value_preds[step]
             else:
                 returns[-1] = next_value
                 for step in reversed(range(rewards.size(0))):
-                    returns[step] = (returns[step + 1] * gamma * self.masks[step + 1] + rewards[step]) * self.bad_masks[
-                        step + 1] + (1 - self.bad_masks[step + 1]) * value_preds[step]
+                    # returns[step] = (returns[step + 1] * gamma * self.masks[step + 1] + rewards[step]) * self.bad_masks[
+                    #     step + 1] + (1 - self.bad_masks[step + 1]) * value_preds[step]
+
+                    returns[step] = returns[step + 1] * gamma * \
+                        self.masks[step + 1] + rewards[step]
         else:
             if use_gae:
                 value_preds[-1] = next_value
@@ -260,8 +264,8 @@ class AdaptiveOnlineStorage(object):
                                                          latent,
                                                          #  self.beliefs[:-
                                                          #               1] if self.beliefs is not None else None,
-                                                         self.tasks[:-
-                                                                    1] if self.tasks is not None else None,
+                                                         #  self.tasks[:-
+                                                         #             1] if self.tasks is not None else None,
                                                          self.actions)
         self.action_log_probs = action_log_probs.detach()
 
@@ -304,11 +308,11 @@ class AdaptiveOnlineStorage(object):
             #                                 1].reshape(-1, *self.beliefs.size()[2:])[indices]
             # else:
             #     belief_batch = None
-            if self.args.pass_task_to_policy:
-                task_batch = self.tasks[:-
-                                        1].reshape(-1, *self.tasks.size()[2:])[indices]
-            else:
-                task_batch = None
+            # if self.args.pass_task_to_policy:
+            #     task_batch = self.tasks[:-
+            #                             1].reshape(-1, *self.tasks.size()[2:])[indices]
+            # else:
+            #     task_batch = None
 
             actions_batch = self.actions.reshape(-1,
                                                  self.actions.size(-1))[indices]
@@ -331,7 +335,6 @@ class AdaptiveOnlineStorage(object):
             #     value_preds_batch, return_batch, old_action_log_probs_batch, adv_targ
 
             yield state_batch, \
-                task_batch, \
                 actions_batch, \
                 latent_sample_batch, latent_mean_batch, latent_logvar_batch, \
                 value_preds_batch, return_batch, old_action_log_probs_batch, adv_targ

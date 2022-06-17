@@ -8,7 +8,7 @@ def get_args(rest_args):
     # TODO use the same as args_grid_varibad.py for now
 
     parser.add_argument('--change_interval', type=int, default=12)
-    parser.add_argument('--enable_adaptivelearner',
+    parser.add_argument('--enable_MixedLearner',
                         type=boolean_argument, default=True)
 
     # --- GENERAL ---

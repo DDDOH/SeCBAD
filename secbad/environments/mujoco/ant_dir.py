@@ -4,7 +4,10 @@ rewrite step and reset_model to support nonstationary tasks
 '''
 
 
+from distutils.log import info
+from tkinter.tix import Y_REGION
 import numpy as np
+import matplotlib.pyplot as plt
 from gym.envs.mujoco.ant_v4 import AntEnv
 # from ..env_utils import SegmentContextDist, NonstationaryContext
 import gym
@@ -68,7 +71,7 @@ class AntDir(AntEnv):
 
             costs = ctrl_cost = self.control_cost(action)
 
-            done = self.done
+            # done = self.done
             observation = self._get_obs()
             info = {
                 "reward_forward": forward_reward,
@@ -91,6 +94,8 @@ class AntDir(AntEnv):
 
             if self.traj_step == self.traj_len:
                 done = True
+            else:
+                done = False
 
             # 6-11 the new render API is not supported yet
             # self.renderer.render_step()
@@ -121,15 +126,75 @@ class AntDir(AntEnv):
 
         return observation
 
-    def reset(self, options, seed=None):
+    def reset(self, options=None, seed=None):
         # print(options)
         observation = super(AntEnv, self).reset(seed=seed)
-        traj_context = options['traj_context'][self.id]
-        assert self.traj_len == len(
-            traj_context), "traj_context length must be equal to max_episode_steps"
+        if options != None:
+            traj_context = options['traj_context'][self.id]
+            assert self.traj_len == len(
+                traj_context), "traj_context length must be equal to max_episode_steps"
+        else:
+            traj_context = self.get_traj_context(self.traj_len)
         self.traj_context = traj_context
         self.traj_step = 0
         return observation
+
+    def vis_traj(self, prev_obs, actions, rewards, info_rec, fig_dir_name):
+
+        x_position = [_['x_position'] for _ in info_rec]
+        y_position = [_['y_position'] for _ in info_rec]
+
+        plt.figure(figsize=(3*5, 5))
+
+        # position_x & pos_y
+        plt.subplot(131)
+        plt.scatter(x_position, y_position, c=np.arange(self.traj_len), s=1)
+
+        plt.subplot(132)
+        # task angle & step
+        # true angle & step
+
+        plt.subplot(133)
+        # velocity along task angle
+
+        plt.savefig(fig_dir_name)
+        plt.close('all')
+        # unchanged_length & step
+
+    @ staticmethod
+    def get_traj_context(traj_len):
+        """Use goal direction as context
+
+        Args:
+            traj_len (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        non_stationary = False
+
+        if non_stationary:
+            filled_length = 0
+            traj_context = []
+
+            context_length = int(max(np.random.normal(80, 20), 20))
+            goal_direction_base = np.random.uniform(0, np.pi * 2)
+
+            while True:
+                segment_context = np.random.normal(
+                    goal_direction_base, 0.2, context_length)
+                traj_context.append(segment_context)
+                filled_length += context_length
+                if filled_length > traj_len:
+                    break
+
+                context_length = int(max(np.random.normal(80, 20), 20))
+                goal_direction_base = np.random.uniform(0, np.pi * 2)
+
+            return np.concatenate(traj_context)[:traj_len]
+        else:
+            goal_direction = np.random.uniform(0, np.pi * 2)
+            return np.ones(traj_len) * goal_direction
 
     @staticmethod
     def get_context_distribution():

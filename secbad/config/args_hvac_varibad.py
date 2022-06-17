@@ -6,7 +6,7 @@ def get_args(rest_args):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--learner_type', default='varibad',
-                        help="select from varibad, sacbad, oracle_truncate")
+                        help="select from varibad, secbad, oracle_truncate")
 
     parser.add_argument('--traj_len', type=int, default=800)
 
@@ -19,7 +19,7 @@ def get_args(rest_args):
     # parser.add_argument('--visualize_model',
     #                     type=boolean_argument, default=False)
     # parser.add_argument('--model_dir', type=str,
-    #                     default='/Users/shuffleofficial/Offline_Documents/SaCBAD/load_model_logs_AntDirNon-v0/debug_sacbad_12__06_10_23_24_04/models/')
+    #                     default='/Users/shuffleofficial/Offline_Documents/secbad/load_model_logs_AntDirNon-v0/debug_secbad_12__06_10_23_24_04/models/')
     # parser.add_argument('--visualize_index', type=int, default=-1)
 
     # parser.add_argument('--traj_len', type=int, default=500)

@@ -5,8 +5,12 @@ from ...utils.helpers import boolean_argument
 def get_args(rest_args):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--learner_type', default='sacbad',
-                        help="select from varibad, sacbad, oracle_truncate")
+    parser.add_argument('--learner_type', default='secbad',
+                        help="select from varibad, secbad, oracle_truncate")
+
+    # use wrong priori
+    parser.add_argument('--inaccurate_priori',
+                        type=boolean_argument, default=False)
 
     # --- GENERAL ---
 
@@ -14,10 +18,10 @@ def get_args(rest_args):
                         help='number of frames to train')
     parser.add_argument('--max_rollouts_per_task', type=int,
                         default=1, help='number of MDP episodes for adaptation')  # 2 originally
-    parser.add_argument('--exp_label', default='sacbad',
+    parser.add_argument('--exp_label', default='secbad',
                         help='label (typically name of method)')
     parser.add_argument(
-        '--env_name', default='HalfGoalNon-v0', help='environment to train on')
+        '--env_name', default='AntVelNon-v0', help='environment to train on')
 
     # --- POLICY ---
 
@@ -72,7 +76,7 @@ def get_args(rest_args):
     # PPO specific
     parser.add_argument('--ppo_num_epochs', type=int,
                         default=2, help='number of epochs per PPO update')
-    parser.add_argument('--ppo_num_minibatch', type=int, default=8,
+    parser.add_argument('--ppo_num_minibatch', type=int, default=1,
                         help='number of minibatches to split the data')
     parser.add_argument('--ppo_use_huberloss', type=boolean_argument,
                         default=True, help='use huberloss instead of MSE')
@@ -86,7 +90,7 @@ def get_args(rest_args):
                         help='learning rate (default: 7e-4)')
     parser.add_argument('--num_processes', type=int, default=16,
                         help='how many training CPU processes / parallel environments to use (default: 16)')
-    parser.add_argument('--policy_num_steps', type=int, default=400,
+    parser.add_argument('--policy_num_steps', type=int, default=200,
                         help='number of env steps to do (per process) before updating')
     parser.add_argument('--policy_eps', type=float, default=1e-8,
                         help='optimizer epsilon (1e-8 for ppo, 1e-5 for a2c)')
@@ -195,7 +199,6 @@ def get_args(rest_args):
                         default=1.0, help='weight for task loss')
     parser.add_argument('--task_decoder_layers', nargs='+',
                         type=int, default=[64, 32])
-    # 似乎这里 task_id 指的是离散的task，task_description 是连续的 task
     parser.add_argument('--task_pred_type', type=str,
                         default='task_description', help='choose: task_id, task_description')
 

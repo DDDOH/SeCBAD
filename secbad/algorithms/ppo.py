@@ -97,8 +97,10 @@ class PPO:
                 advantages, self.num_mini_batch)
             for sample in data_generator:
 
-                state_batch, belief_batch, task_batch, \
-                    actions_batch, latent_sample_batch, latent_mean_batch, latent_logvar_batch, value_preds_batch, \
+                # state_batch, belief_batch, task_batch, \
+                #     actions_batch, latent_sample_batch, latent_mean_batch, latent_logvar_batch, value_preds_batch, \
+                #     return_batch, old_action_log_probs_batch, adv_targ = sample
+                state_batch, actions_batch, latent_sample_batch, latent_mean_batch, latent_logvar_batch, value_preds_batch, \
                     return_batch, old_action_log_probs_batch, adv_targ = sample
 
                 if not rlloss_through_encoder:
@@ -116,7 +118,6 @@ class PPO:
                 # Reshape to do in a single forward pass for all steps
                 values, action_log_probs, dist_entropy = \
                     self.actor_critic.evaluate_actions(state=state_batch, latent=latent_batch,
-                                                       belief=belief_batch, task=task_batch,
                                                        action=actions_batch)
 
                 ratio = torch.exp(action_log_probs -
@@ -210,5 +211,7 @@ class PPO:
 
         return value_loss_epoch, action_loss_epoch, dist_entropy_epoch, loss_epoch
 
-    def act(self, state, latent, belief, task, deterministic=False):
-        return self.actor_critic.act(state=state, latent=latent, belief=belief, task=task, deterministic=deterministic)
+    # def act(self, state, latent, belief, task, deterministic=False):
+    def act(self, state, latent, task, deterministic=False):
+        # return self.actor_critic.act(state=state, latent=latent, belief=belief, task=task, deterministic=deterministic)
+        return self.actor_critic.act(state=state, latent=latent, deterministic=deterministic)

@@ -5,8 +5,8 @@ from ...utils.helpers import boolean_argument
 def get_args(rest_args):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--learner_type', default='sacbad',
-                        help="select from varibad, sacbad, oracle_truncate")
+    parser.add_argument('--learner_type', default='secbad',
+                        help="select from varibad, secbad, oracle_truncate")
 
     # --- GENERAL ---
 
@@ -14,10 +14,10 @@ def get_args(rest_args):
                         help='number of frames to train')
     parser.add_argument('--max_rollouts_per_task', type=int,
                         default=1, help='number of MDP episodes for adaptation')  # 2 originally
-    parser.add_argument('--exp_label', default='sacbad',
+    parser.add_argument('--exp_label', default='secbad',
                         help='label (typically name of method)')
     parser.add_argument(
-        '--env_name', default='HalfDirNon-v0', help='environment to train on')
+        '--env_name', default='HalfGoalNon-v0', help='environment to train on')
 
     # --- POLICY ---
 
@@ -50,7 +50,7 @@ def get_args(rest_args):
     parser.add_argument('--norm_rew_for_policy', type=boolean_argument,
                         default=True, help='normalise rew for RL train')
     parser.add_argument('--norm_actions_pre_sampling', type=boolean_argument,
-                        default=True, help='normalise policy output')
+                        default=False, help='normalise policy output')
     parser.add_argument('--norm_actions_post_sampling', type=boolean_argument,
                         default=False, help='normalise policy output')
 

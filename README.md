@@ -1,13 +1,16 @@
-# SaCBAD
+# secbad
 
-
+- [ ] rewrite VAEBuffer class
 - [ ] visualize behavior (rendering video)
 - [ ] remove warnings
-- [ ] use gym implemented vector_env https://github.com/openai/gym/blob/a6274a55f04a31ecc0edf9f72de687d74bc1783d/gym/vector/vector_env.py
-- [ ] update all mujoco env to newest gym version
-- [ ] 
-- [ ] HVAC env
+- [x] use gym implemented vector_env https://github.com/openai/gym/blob/a6274a55f04a31ecc0edf9f72de687d74bc1783d/gym/vector/vector_env.py
+- [x] update all mujoco env to newest gym version
+- [x] HVAC env
 - [ ] update README
+
+ignore the normalization for reward, action and observation for now
+
+ignore the discount reward for now (parser.add_argument('--policy_gamma', type=float, default=0.97, help='discount factor for rewards'))
 
 
 
